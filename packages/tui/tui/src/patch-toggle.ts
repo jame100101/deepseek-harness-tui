@@ -66,11 +66,18 @@ export function enableEntryText(content: string, id: string): string {
     if (inTarget && /^[ \t]*disabled: true[ \t]*$/.test(line)) continue
     out.push(line)
   }
-  return out
+  const result = out
     .filter((line, index) => {
       if (line.trim() !== `- id: ${id}`) return true
       const next = out[index + 1] ?? ''
       return /^[ \t]+/.test(next) && !/^[ \t]*- /.test(next)
     })
     .join('\n')
+  // A patch list must stay a YAML ARRAY: comments alone parse to null and
+  // the launcher's reload rejects the file. Restore the flow-style empty
+  // array when no entry remains.
+  if (!/^[ \t]*\[/m.test(result) && !/^[ \t]*- /m.test(result)) {
+    return `${result}${result.endsWith('\n') ? '' : '\n'}[]\n`
+  }
+  return result
 }

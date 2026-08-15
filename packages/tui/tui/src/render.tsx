@@ -1233,14 +1233,7 @@ export function App(props: {
     const nodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 800))
     const lines: TranscriptLine[] = []
     if (nodes.length === 0) {
-      const welcome = welcomeBlock(width, snapshot.model, snapshot.cwd, snapshot.sessionId, locale)
-      const panelStart = welcome.findIndex(line => line.startsWith('┏'))
-      welcome.forEach((line, index) => {
-        if (panelStart === -1 || index < panelStart) {
-          // The pixel whale rides the welcome panel in DeepSeek blue.
-          lines.push({ key: `welcome-${index}`, text: line, color: 'blue' })
-          return
-        }
+      welcomeBlock(width, snapshot.model, snapshot.cwd, snapshot.sessionId, locale).forEach((line, index) => {
         const chrome = line.startsWith('┏') || line.startsWith('┃') || line.startsWith('┗')
         lines.push({ key: `welcome-${index}`, text: line, ...(chrome ? { color: 'yellow' } : { dim: true }) })
       })

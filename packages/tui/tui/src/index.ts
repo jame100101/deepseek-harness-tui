@@ -322,16 +322,22 @@ async function loadSettingsData(ctx: Context, surface: Surface, tuiScope: Settin
       providers: groupProviders(surface.models),
       credentials: credentialRows,
     },
-    plugins: [...ctx.loader.entries()].map(entry => {
-      const descriptor = descriptors.find(candidate => candidate.ns === entry.id)
-      return {
-        id: entry.id,
-        name: entry.options.name,
-        enabled: !entry.disabled,
-        loaded: entry.fiber !== undefined,
-        ...(descriptor === undefined ? {} : { namespace: descriptor.ns }),
-      }
-    }),
+    plugins: [...ctx.loader.entries()]
+      // Groups and tree roots are not toggleable plugins: skip them so the
+      // switch never targets the include row itself.
+      .filter(entry => entry.options.group !== true && entry.id !== entry.options.id)
+      .map(entry => {
+        const descriptor = descriptors.find(candidate => candidate.ns === entry.options.id)
+        return {
+          // The BARE id is what the profile patch layer targets; the runtime
+          // `entry.id` carries the include tree's prefix.
+          id: entry.options.id,
+          name: entry.options.name,
+          enabled: !entry.disabled,
+          loaded: entry.fiber !== undefined,
+          ...(descriptor === undefined ? {} : { namespace: descriptor.ns }),
+        }
+      }),
     configs: Object.fromEntries(descriptors.map(descriptor => [descriptor.ns, collectPluginFields(descriptor.schema, descriptor.value, general.locale)])),
     inventory: {
       namespaces: descriptors.map(descriptor => ({
@@ -649,7 +655,14 @@ async function boot(
     description: command.description,
     needsArgs: command.input !== undefined,
   }))
-  const models = await loadModels(ctx, created.selection)
+  // First paint does NOT wait for the slow data loads: the model catalog
+  // starts as the selected route, the settings pages show their loading
+  // placeholder, and both refresh when their loads settle.
+  const bootModels: ModelEntry[] = [{
+    provider: created.selection.provider,
+    model: created.selection.model,
+    label: `${created.selection.provider}/${created.selection.model}`,
+  }]
   const store = createTuiStore({
     version: 0,
     nodes: [],
@@ -664,7 +677,7 @@ async function boot(
     pendingApproval: null,
     pendingQuestion: null,
     commands: commandEntries,
-    models,
+    models: bootModels,
     sessions: [],
     queued: [],
     settings: null,
@@ -688,7 +701,7 @@ async function boot(
     agent: created.agent,
     selection: created.ref,
     currentModel: created.selection.model,
-    models,
+    models: bootModels,
     pendingApproval: null,
     pendingQuestion: null,
     approvalResolve: null,
@@ -705,6 +718,21 @@ async function boot(
     pendingAttachments: [],
     cwd: process.cwd(),
   }
+  /** Load the model catalog, then the settings pages it feeds (parallel). */
+  const loadPanels = (): void => {
+    void loadModels(ctx, created.selection).then((models) => {
+      surface.models = models
+      surface.version += 1
+      store.set({ ...store.getSnapshot(), models, version: surface.version })
+    }).catch(() => {}).then(() => {
+      void loadSettingsData(ctx, surface, tuiScope).then((data) => {
+        surface.settings = data
+        surface.version += 1
+        store.set({ ...store.getSnapshot(), settings: data, version: surface.version })
+      }).catch(() => {})
+    })
+  }
+  void loadPanels()
   void resolveReasoning(ctx, created.selection.provider, created.selection.model).then((reasoning) => {
     // The persisted selection's own effort wins over the adapter default.
     surface.reasoning = {
@@ -734,7 +762,6 @@ async function boot(
     }
   }
   void loadFeedback()
-  surface.settings = await loadSettingsData(ctx, surface, tuiScope)
   void subagentRows(ctx, surface.agent.id).then((rows) => {
     surface.subagents = rows
     surface.version += 1
@@ -1007,7 +1034,9 @@ async function boot(
             return { error: '当前启动方式没有可热改的用户 patch 层（需要 --profile），无法切换插件开关' }
           }
           try {
-            const entry = [...ctx.loader.entries()].find(candidate => candidate.id === id)
+            // The renderer passes the BARE entry id — the exact key the
+            // profile patch layer targets.
+            const entry = [...ctx.loader.entries()].find(candidate => candidate.options.id === id)
             const enabling = entry?.disabled === true
             const content = readFileSync(patchPath, 'utf8')
             const next = enabling ? enableEntryText(content, id) : disableEntryText(content, id)

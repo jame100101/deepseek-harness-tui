@@ -283,7 +283,6 @@ describe('Ink 7 full-screen render', () => {
       const lines = lastFrameLines(capture.output)
       expect(frameRows(lines)).toBe(ROWS)
       expect(lines.some(line => line.includes('dsh-tui v0.0.13 · DeepSeek Harness'))).toBe(true) // welcome panel
-      expect(lines.some(line => line.includes('o  o'))).toBe(true) // the pixel whale rides the panel
       // A fullscreen frame writes NO trailing newline, so after the write the
       // terminal cursor rests ON the last row; Ink's suffix counts from one
       // line below it (`moveUp = visibleLineCount - y`). The renderer's +1

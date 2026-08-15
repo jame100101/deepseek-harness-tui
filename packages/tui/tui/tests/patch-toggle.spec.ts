@@ -36,6 +36,11 @@ describe('enableEntryText', () => {
     expect(next).toBe('# c\n- id: other\n')
   })
 
+  it('restores the flow-style [] when the last entry is removed (file stays a YAML array)', () => {
+    const next = enableEntryText('# comments\n- id: timer\n  disabled: true\n', 'timer')
+    expect(next).toBe('# comments\n[]\n')
+  })
+
   it('drops only the disable line when the entry keeps other fields', () => {
     const next = enableEntryText('- id: storage\n  disabled: true\n  config: {a: 1}\n', 'storage')
     expect(next).toBe('- id: storage\n  config: {a: 1}\n')
