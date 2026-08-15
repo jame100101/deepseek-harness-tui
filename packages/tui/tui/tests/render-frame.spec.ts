@@ -283,6 +283,7 @@ describe('Ink 7 full-screen render', () => {
       const lines = lastFrameLines(capture.output)
       expect(frameRows(lines)).toBe(ROWS)
       expect(lines.some(line => line.includes('dsh-tui v0.0.13 · DeepSeek Harness'))).toBe(true) // welcome panel
+      expect(lines.some(line => line.includes('o  o'))).toBe(true) // the pixel whale rides the panel
       // A fullscreen frame writes NO trailing newline, so after the write the
       // terminal cursor rests ON the last row; Ink's suffix counts from one
       // line below it (`moveUp = visibleLineCount - y`). The renderer's +1
@@ -715,9 +716,9 @@ describe('Ink 7 full-screen render', () => {
       expect(permissionLabel('read-only')).toBe('read only')
       expect(permissionLabel('workspace-write')).toBe('workspace write')
       expect(permissionLabel('danger-full-access')).toBe('full access')
-      expect(permissionColor('read-only')).toBe('white')
-      expect(permissionColor('workspace-write')).toBe('yellow')
-      expect(permissionColor('danger-full-access')).toBe('red')
+      expect(permissionColor('read-only')).toBe('whiteBright')
+      expect(permissionColor('workspace-write')).toBe('yellowBright')
+      expect(permissionColor('danger-full-access')).toBe('redBright')
     } finally {
       unmount()
     }
@@ -735,8 +736,9 @@ describe('Ink 7 full-screen render', () => {
       await type('\x1b[Z')
       await new Promise<void>(resolve => setTimeout(resolve, 320))
       expect(cycled).toEqual(['cycle'])
-      let lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('权限 → workspace-write'))).toBe(true)
+      // The pinned permission row is the feedback; no extra "权限 →" notice.
+      const lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('权限 →'))).toBe(false)
       // The split form: ESC flushes early, the `[Z` tail lands inside the
       // arbiter window and re-synthesizes as shift+tab.
       stdin.write('\x1b')
@@ -744,9 +746,8 @@ describe('Ink 7 full-screen render', () => {
       stdin.write('[Z')
       await new Promise<void>(resolve => setTimeout(resolve, 320))
       expect(cycled).toEqual(['cycle', 'cycle'])
-      lines = lastFrameLines(capture.output)
       // No CSI tail leaked into the composer as text.
-      expect(lines.some(line => line.includes('[Z'))).toBe(false)
+      expect(lastFrameLines(capture.output).some(line => line.includes('[Z'))).toBe(false)
     } finally {
       unmount()
     }

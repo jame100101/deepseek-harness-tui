@@ -5,7 +5,7 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { anchorRetry, applyEvent, createScratch, foldFromLog, initialState } from '../src/fold'
 import type { FoldState } from '../src/types'
 import { parseMouseWheel, scrollOffsetForWheel, stripMouseReports } from '../src/mouse'
-import { formatStats, markdownLines, renderNodePlain } from '../src/plain'
+import { fitStatsStrip, formatStats, markdownLines, renderNodePlain } from '../src/plain'
 
 /** Display width alias used by the table alignment assertions. */
 const stringWidthOf = stringWidth
@@ -403,5 +403,13 @@ describe('session fold', () => {
     expect(formatStats(stats, 'en', occupancy)).toContain('occupied 50%/128k')
     // A zero projected value falls back to the billed-tokens group.
     expect(formatStats(stats, 'zh', { projectedTokens: 0, contextWindow: 128_000 })).toContain('%/128k')
+  })
+
+  it('fits the stats strip by dropping whole groups, never ellipses', () => {
+    const strip = '轮 128 · 步 512 · LLM 12.3s · 工具 8.1s · TTFT 900ms · 1.2k tok/s · 缓存 45% 命中 · ↑9.9M ↓8.8M Σ19M · 占用 78%/128k'
+    expect(fitStatsStrip(strip, 20)).not.toContain('…')
+    expect(fitStatsStrip(strip, 20)).toBe('轮 128 · 步 512')
+    // The full strip passes through when it fits.
+    expect(fitStatsStrip('轮 1 · 步 2', 60)).toBe('轮 1 · 步 2')
   })
 })

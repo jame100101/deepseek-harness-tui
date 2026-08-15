@@ -142,7 +142,7 @@ export function buildSettingsRows(
       for (const plugin of data.plugins) {
         rows.push({
           key: `pl-${plugin.id}`,
-          text: `${plugin.enabled ? '●' : '○'} ${plugin.id} · ${plugin.name}${plugin.loaded ? '' : (locale === 'en' ? ' · not loaded' : ' · 未加载')}${plugin.enabled ? '' : (locale === 'en' ? ' · disabled' : ' · 已禁用')}${plugin.namespace !== undefined ? (locale === 'en' ? ' · configurable' : ' · 可配置') : ''}${locale === 'en' ? ' · Enter toggle' : ' · Enter 开关'}`,
+          text: `${plugin.enabled ? '●' : '○'} ${plugin.id} · ${plugin.name}${plugin.loaded ? '' : (locale === 'en' ? ' · not loaded' : ' · 未加载')}${plugin.enabled ? '' : (locale === 'en' ? ' · disabled' : ' · 已禁用')}${plugin.namespace !== undefined ? (locale === 'en' ? ' · configurable' : ' · 可配置') : ''}`,
           ...(plugin.enabled ? {} : { dim: true }),
           action: 'toggle-plugin',
           meta: {

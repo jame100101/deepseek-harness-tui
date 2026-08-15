@@ -111,11 +111,11 @@ describe('buildSettingsRows plugins toggle', () => {
     const storage = rows.find(row => row.key === 'pl-storage')
     expect(storage?.action).toBe('toggle-plugin')
     expect(storage?.meta).toEqual({ id: 'storage', enabled: true, ns: 'storage' })
-    expect(storage?.text).toContain('Enter 开关')
+    expect(storage?.text).toBe('● storage · storage · 可配置')
     const off = rows.find(row => row.key === 'pl-off')
     expect(off?.action).toBe('toggle-plugin')
     expect(off?.meta).toEqual({ id: 'off', enabled: false })
-    expect(off?.text).toContain('已禁用')
+    expect(off?.text).toBe('○ off · off · 未加载 · 已禁用')
   })
 
   it('renders the toggle header in English', () => {
@@ -123,7 +123,7 @@ describe('buildSettingsRows plugins toggle', () => {
     fixture.settings.plugins = [{ id: 'storage', name: 'storage', enabled: true, loaded: true }]
     const rows = buildSettingsRows(fixture, 'plugins', 'en')
     expect(rows[0]?.text).toContain('Enter toggles')
-    expect(rows.some(row => row.key === 'pl-storage' && row.text.includes('Enter toggle'))).toBe(true)
+    expect(rows.some(row => row.key === 'pl-storage' && row.text === '● storage · storage')).toBe(true)
   })
 })
 

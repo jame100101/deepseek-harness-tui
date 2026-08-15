@@ -21,7 +21,7 @@ import { csiTailKey, escapeArbiter, syntheticKey } from './csi-arbiter'
 import {
   DISABLE_WHEEL_MOUSE, ENABLE_WHEEL_MOUSE, parseMouseReport, parseMouseWheel, scrollOffsetForWheel, stripMouseReports,
 } from './mouse'
-import { formatStats, helpText, markdownLines, retryCountdownSeconds, welcomeBlock, wrapRuns } from './plain'
+import { fitStatsStrip, formatStats, helpText, markdownLines, retryCountdownSeconds, welcomeBlock, wrapRuns } from './plain'
 import type { MdRun } from './plain'
 import { sanitizeTerminalText } from './sanitize'
 import {
@@ -79,7 +79,6 @@ interface Copy {
   turn: string
   effort: string
   effortChanged: (effort: string) => string
-  permissionChanged: (mode: string) => string
   effortUsage: string
   contextTitle: (producer: string) => string
   cardTruncated: string
@@ -169,7 +168,6 @@ const COPY: Record<Locale, Copy> = {
     turn: '轮',
     effort: 'effort',
     effortChanged: effort => `推理等级 → ${effort}`,
-    permissionChanged: mode => `权限 → ${mode}`,
     effortUsage: '用法：/effort off|high|max',
     contextTitle: producer => `◆ 上下文注入 · ${producer}`,
     cardTruncated: '… 卡片过长，已截断显示',
@@ -256,7 +254,6 @@ const COPY: Record<Locale, Copy> = {
     turn: 'turn',
     effort: 'effort',
     effortChanged: effort => `reasoning effort → ${effort}`,
-    permissionChanged: mode => `permission → ${mode}`,
     effortUsage: 'Usage: /effort off|high|max',
     contextTitle: producer => `◆ context injected · ${producer}`,
     cardTruncated: '… card too long, display truncated',
@@ -582,7 +579,7 @@ function Header(props: {
   const thinking = snapshot.settings?.general.thinking === 'expanded' ? 'on' : 'off'
   const busyEnter = snapshot.settings?.general.busyEnter ?? 'queue'
   const rows: { left: { text: string; color?: string; bold?: boolean }; right: string }[] = [
-    { left: { text: '◆ DSH-TUI', color: 'cyan', bold: true }, right: `session ${snapshot.sessionId.slice(0, 12)}` },
+    { left: { text: '◆ DSH-TUI', color: 'cyan', bold: true }, right: fitDisplayText(`session ${snapshot.sessionId}`, Math.max(16, props.width - stringWidth('◆ DSH-TUI') - 2)) },
     { left: { text: shorten(snapshot.cwd, Math.max(18, props.width - 16)) }, right: `thinking ${thinking}` },
     { left: { text: `${snapshot.model} · busyEnter ${busyEnter}`, color: 'magenta' }, right: `${snapshot.nodes.length} events` },
   ]
@@ -608,6 +605,7 @@ function Header(props: {
 function Transcript(props: {
   lines: readonly TranscriptLine[]
   height: number
+  width: number
   offset: number
   onMaximumOffsetChange?: (maximumOffset: number, lineCount: number) => void
   theme: 'dark' | 'light'
@@ -649,8 +647,9 @@ function Transcript(props: {
         </Text>
       ))}
       {props.backButton === true ? (
-        <Text key="back-button" bold color={themed('cyan', props.theme, 'cyan')}>
-          {COPY[props.locale].backToBottom}
+        <Text key="back-button">
+          {' '.repeat(Math.max(0, Math.floor((Math.max(1, props.width - 2) - stringWidth(` ${COPY[props.locale].backToBottom} `)) / 2)))}
+          <Text bold inverse color={themed('cyan', props.theme, 'cyan')}>{` ${COPY[props.locale].backToBottom} `}</Text>
         </Text>
       ) : null}
     </Box>
@@ -970,9 +969,9 @@ export function permissionLabel(mode: 'read-only' | 'workspace-write' | 'danger-
       : 'full access'
 }
 
-/** Status-bar color for one file-policy mode: white / yellow / red. */
-export function permissionColor(mode: 'read-only' | 'workspace-write' | 'danger-full-access'): 'white' | 'yellow' | 'red' {
-  return mode === 'read-only' ? 'white' : mode === 'workspace-write' ? 'yellow' : 'red'
+/** Status-bar color for one file-policy mode: bright white / yellow / red. */
+export function permissionColor(mode: 'read-only' | 'workspace-write' | 'danger-full-access'): 'whiteBright' | 'yellowBright' | 'redBright' {
+  return mode === 'read-only' ? 'whiteBright' : mode === 'workspace-write' ? 'yellowBright' : 'redBright'
 }
 
 /** The status bar: separator, activity row, and the Web-stats strip. */
@@ -1004,15 +1003,19 @@ function StatusBar(props: {
     ? `● ${phaseLabel}${elapsedLabel}${queuedLabel}${planLabel} ${copy.busyCancel}`
     : `${copy.idle}${historyPaused}${planLabel}${props.selectionHint ?? copy.tabSelectHint}`
   const effortLabel = snapshot.reasoning.effort ?? copy.effortOff
-  const right = `${copy.effort} ${effortLabel} · ${copy.turn} ${snapshot.stats.turns} · ↑${snapshot.stats.tokens.input} ↓${snapshot.stats.tokens.output} Σ${snapshot.stats.tokens.input + snapshot.stats.tokens.output + snapshot.stats.tokens.cacheRead + snapshot.stats.tokens.cacheWrite + snapshot.stats.tokens.reasoning} tok`
+  const effortText = `${copy.effort} ${effortLabel}`
+  const rightRest = ` · ${copy.turn} ${snapshot.stats.turns} · ↑${snapshot.stats.tokens.input} ↓${snapshot.stats.tokens.output} Σ${snapshot.stats.tokens.input + snapshot.stats.tokens.output + snapshot.stats.tokens.cacheRead + snapshot.stats.tokens.cacheWrite + snapshot.stats.tokens.reasoning} tok`
   return (
     <Box flexDirection="column">
       <Text dimColor>{'─'.repeat(Math.max(1, props.width))}</Text>
       <Box justifyContent="space-between" paddingX={1}>
-        <Text color={themed(snapshot.busy ? 'yellow' : 'cyan', props.theme, 'cyan')}>{shorten(left, props.width - stringWidth(right) - 3)}</Text>
-        <Text dimColor>{right}</Text>
+        <Text color={themed(snapshot.busy ? 'yellow' : 'cyan', props.theme, 'cyan')}>{shorten(left, props.width - stringWidth(effortText) - stringWidth(rightRest) - 3)}</Text>
+        <Box>
+          <Text bold color={themed('magenta', props.theme, 'magenta')}>{effortText}</Text>
+          <Text dimColor>{rightRest}</Text>
+        </Box>
       </Box>
-      <Text dimColor>{shorten(formatStats(snapshot.stats, props.locale, snapshot.occupancy), props.width - 2)}</Text>
+      <Text dimColor>{fitStatsStrip(formatStats(snapshot.stats, props.locale, snapshot.occupancy), props.width - 2)}</Text>
     </Box>
   )
 }
@@ -1230,7 +1233,14 @@ export function App(props: {
     const nodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 800))
     const lines: TranscriptLine[] = []
     if (nodes.length === 0) {
-      welcomeBlock(width, snapshot.model, snapshot.cwd, snapshot.sessionId, locale).forEach((line, index) => {
+      const welcome = welcomeBlock(width, snapshot.model, snapshot.cwd, snapshot.sessionId, locale)
+      const panelStart = welcome.findIndex(line => line.startsWith('┏'))
+      welcome.forEach((line, index) => {
+        if (panelStart === -1 || index < panelStart) {
+          // The pixel whale rides the welcome panel in DeepSeek blue.
+          lines.push({ key: `welcome-${index}`, text: line, color: 'blue' })
+          return
+        }
         const chrome = line.startsWith('┏') || line.startsWith('┃') || line.startsWith('┗')
         lines.push({ key: `welcome-${index}`, text: line, ...(chrome ? { color: 'yellow' } : { dim: true }) })
       })
@@ -1916,8 +1926,10 @@ export function App(props: {
     // Shift+Tab rotates the session's file-policy mode (the Web permission
     // control). It may arrive as one `\x1b[Z` chunk or split across the
     // Escape arbiter, which re-synthesizes it as tab+shift by this point.
+    // The pinned permission row above the composer shows the new mode, so
+    // no extra notice is needed.
     if ((key.shift === true && key.tab === true) || input === '\x1b[Z') {
-      setNotice(copy.permissionChanged(props.host.cycleSandbox()))
+      props.host.cycleSandbox()
       return
     }
     // The wheel scrolls the panel when one is open, the transcript otherwise.
@@ -2153,6 +2165,7 @@ export function App(props: {
         <Transcript
           lines={allLines}
           height={transcriptHeight}
+          width={width}
           offset={transcriptScrollOffset}
           onMaximumOffsetChange={updateTranscriptMaximumOffset}
           theme={theme}

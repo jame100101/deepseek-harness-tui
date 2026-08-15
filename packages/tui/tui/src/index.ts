@@ -1014,10 +1014,11 @@ async function boot(
             if (next === content) return { enabled: !enabling }
             writeFileSync(patchPath, next, 'utf8')
             // The HMR watcher re-applies the layer asynchronously; refresh the
-            // plugins page once the reload has settled (and once more as a
-            // safety net for a slow loader).
-            setTimeout(() => { refreshSettings() }, 800)
-            setTimeout(() => { refreshSettings() }, 2500)
+            // plugins page once the reload has settled (plus a slow-loader
+            // safety net) so the ●/○ dot flips live.
+            setTimeout(() => { refreshSettings() }, 600)
+            setTimeout(() => { refreshSettings() }, 1500)
+            setTimeout(() => { refreshSettings() }, 4000)
             return { enabled: enabling }
           } catch (error) {
             return { error: `切换失败：${error instanceof Error ? error.message : String(error)}` }

@@ -396,16 +396,28 @@ function wrapCells(text: string, width: number): string[] {
   return lines
 }
 
+/** The pixel whale greeting the welcome panel, drawn in terminal blue. */
+export const WHALE: readonly string[] = [
+  '        .    .',
+  '         \\  /',
+  "      .-'    '-.",
+  "     /   o  o   \\",
+  '    |  .------.  |',
+  "     \\  '----'  /",
+  "      '-.____.-'",
+  '          ``',
+]
+
 /**
- * The welcome block: a `┏━┓` panel listing the model, workspace, session,
- * and the starter hint (no logo — the header carries the identity). Adapts
- * to the terminal width (30 minimum, 112 maximum).
+ * The welcome block: a blue pixel whale over a `┏━┓` panel listing the
+ * model, workspace, session, and the starter hint. Adapts to the terminal
+ * width (30 minimum, 112 maximum).
  * @param width - available terminal cells.
  * @param model - the active model id.
  * @param cwd - the workspace path.
  * @param sessionId - the session id (first 8 chars shown).
  * @param locale - UI chrome language.
- * @returns the rendered lines.
+ * @returns the rendered lines (whale lines first, then the panel).
  */
 export function welcomeBlock(width: number, model: string, cwd: string, sessionId: string, locale: 'zh' | 'en' = 'zh'): string[] {
   const usable = Math.max(30, width)
@@ -414,7 +426,12 @@ export function welcomeBlock(width: number, model: string, cwd: string, sessionI
   const label = ' dsh-tui v0.0.13 · DeepSeek Harness '
   const leftRule = 3
   const rightRule = Math.max(0, innerWidth - leftRule - stringWidth(label))
-  const lines: string[] = [`┏${'━'.repeat(leftRule)}${label}${'━'.repeat(rightRule)}┓`]
+  const lines: string[] = WHALE.map(row => {
+    const pad = Math.max(0, innerWidth - stringWidth(row))
+    const left = Math.floor(pad / 2)
+    return ` ${' '.repeat(left)}${row}${' '.repeat(pad - left)} `
+  })
+  lines.push(`┏${'━'.repeat(leftRule)}${label}${'━'.repeat(rightRule)}┓`)
   const details = locale === 'en'
     ? [
         `Model: ${model}`,
@@ -494,6 +511,23 @@ export function formatStats(
       : `occupied ${percentage}%/${formatCount(occupancy.contextWindow)}`)
   } else if (stats.contextWindow > 0 && billed > 0) {
     groups.push(`${Math.min(100, Math.round((billed / stats.contextWindow) * 100))}%/${formatCount(stats.contextWindow)}`)
+  }
+  return groups.join(' · ')
+}
+
+/**
+ * Fit a ` · `-joined stats strip to one row WITHOUT ellipses: groups drop
+ * from the END (least recent datum first, the turn counter always stays)
+ * until the strip fits the width.
+ * @param strip - the full stats strip from {@link formatStats}.
+ * @param width - the available cells.
+ * @returns the strip shortened by whole groups, or the input when it fits.
+ */
+export function fitStatsStrip(strip: string, width: number): string {
+  if (stringWidth(strip) <= width) return strip
+  const groups = strip.split(' · ')
+  while (groups.length > 1 && stringWidth(groups.join(' · ')) > width) {
+    groups.pop()
   }
   return groups.join(' · ')
 }
