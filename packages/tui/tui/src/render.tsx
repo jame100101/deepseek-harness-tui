@@ -334,9 +334,10 @@ const SHIMMER_WINDOW = 4
 
 /**
  * One character's grayscale level under the sweeping highlight. The window
- * (dark gray → gray → near-white → gray → dark gray, smoothstep falloff)
- * travels left to right across the label and loops. Pure: the renderer
- * stamps one phase per tick (~100ms).
+ * (medium gray → lighter → near-white → lighter → medium gray, smoothstep
+ * falloff) travels left to right across the label and loops. The base stays
+ * clearly readable but visibly dimmer than normal assistant output. Pure:
+ * the renderer stamps one phase per tick (~100ms).
  * @param index - the character index inside the label.
  * @param phase - the animation phase (increments once per tick).
  * @param length - the label length the window sweeps across.
@@ -347,7 +348,7 @@ export function thinkingShimmerLevel(index: number, phase: number, length: numbe
   const center = (phase % span) - SHIMMER_WINDOW
   const t = Math.max(0, Math.min(1, 1 - Math.abs(index - center) / (SHIMMER_WINDOW + 1)))
   const smooth = t * t * (3 - 2 * t)
-  return Math.round(60 + 195 * smooth)
+  return Math.round(145 + 110 * smooth)
 }
 
 /**
@@ -1313,18 +1314,20 @@ export function App(props: {
   }, [viewMode, snapshot.nodes, snapshot.trace, snapshot.model, snapshot.cwd, snapshot.sessionId, width, expanded, thinkCollapsed, thinkDefaultOpen, selectedId, retryShimmer, snapshot.feedback, locale])
   const liveThinkLines = useMemo((): TranscriptLine[] => {
     if (snapshot.live === null || !snapshot.busy || snapshot.live.think === '') return []
-    // Claude Code style: one `✻ Thinking …` row whose letters carry a soft
-    // grayscale highlight window sweeping left to right (no spinner as the
-    // primary motion, no whole-row color flashes). Ink diffs the frame, so
-    // only this row rewrites in place each tick.
-    const label = '✻ Thinking'
+    // Claude Code style: the original spinning glyph stays up front, and the
+    // " Thinking" letters carry a soft grayscale highlight window sweeping
+    // left to right. The base gray is medium-bright (readable, clearly
+    // dimmer than assistant output). Ink diffs the frame, so only this row
+    // rewrites in place each tick.
+    const spinner = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    const label = `${spinner[tick % spinner.length]} Thinking`
     const elapsed = snapshot.live.thinkSince === null ? 0 : Date.now() - snapshot.live.thinkSince
     const runs = [
       ...[...label].map((character, index) => ({
         text: character,
         color: thinkingShimmerHex(thinkingShimmerLevel(index, tick, label.length)),
       })),
-      { text: ` ${(elapsed / 1000).toFixed(1)}s…`, dim: true },
+      { text: ` ${(elapsed / 1000).toFixed(1)}s…`, color: '#969696' },
     ]
     // Stable keys: this row re-renders every tick; a position-derived key
     // would churn as the transcript grows and can leave stale rows.
@@ -1346,14 +1349,18 @@ export function App(props: {
     }))
   }, [snapshot.live?.text, snapshot.busy, width])
   const allLines: TranscriptLine[] = [...settledLines, ...liveThinkLines, ...liveTextLines]
-  // A compaction run draws a live gradient row (distinct hues from Thinking).
+  // A compaction run draws the same shimmer style as Thinking: the
+  // spinning glyph plus a grayscale highlight sweeping the label.
   if (snapshot.compaction) {
     const spinner = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    const gradient = ['yellow', 'cyan', 'magenta']
+    const label = `${spinner[tick % spinner.length]} compacting…`
     allLines.push({
       key: 'live-compact',
-      text: `${spinner[tick % spinner.length]} compacting…`,
-      color: gradient[Math.floor(tick / 8) % gradient.length] ?? 'yellow',
+      text: '',
+      runs: [...label].map((character, index) => ({
+        text: character,
+        color: thinkingShimmerHex(thinkingShimmerLevel(index, tick, label.length)),
+      })),
     })
   }
   if (notice !== '') {

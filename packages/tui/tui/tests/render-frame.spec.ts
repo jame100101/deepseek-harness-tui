@@ -959,7 +959,7 @@ describe('Ink 7 full-screen render', () => {
     }
   })
 
-  it('renders the Claude-style ✻ Thinking shimmer instead of a spinning glyph', async () => {
+  it('renders the Thinking shimmer with the original spinner glyph up front', async () => {
     const { store, capture, unmount } = await mount([{ kind: 'user', id: 1, text: 'hi' }])
     try {
       const snapshot = store.getSnapshot()
@@ -971,9 +971,9 @@ describe('Ink 7 full-screen render', () => {
       })
       await new Promise<void>(resolve => setTimeout(resolve, 400))
       const lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('✻ Thinking'))).toBe(true)
-      // No braille spinner glyphs anywhere in the frame.
-      expect(lines.some(line => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(line))).toBe(false)
+      // The original spinning glyph leads the row; the shimmer rides the
+      // " Thinking" letters behind it.
+      expect(lines.some(line => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(line) && line.includes('Thinking'))).toBe(true)
     } finally {
       unmount()
     }
@@ -982,19 +982,19 @@ describe('Ink 7 full-screen render', () => {
   it('sweeps the grayscale highlight window left to right with smooth falloff', () => {
     const length = 10
     // At phase 0 the window enters from the left: index 0 sits inside the
-    // band, far indices stay at the dark base.
+    // band, far indices stay at the medium-gray base.
     const at0 = Array.from({ length }, (_, index) => thinkingShimmerLevel(index, 0, length))
     expect(at0[0]).toBeGreaterThan(at0[5])
-    expect(thinkingShimmerLevel(9, 0, length)).toBe(60)
+    expect(thinkingShimmerLevel(9, 0, length)).toBe(145)
     // The window center reaches near-white and the band is symmetric
-    // around it: dark → gray → white → gray → dark.
+    // around it: gray → lighter → white → lighter → gray.
     const centerPhase = 4 // center = phase % span - 4 = 0 → index 0 is the peak
     const band = Array.from({ length: 11 }, (_, index) => thinkingShimmerLevel(index - 5, centerPhase, length))
-    expect(band[0]).toBe(60)
+    expect(band[0]).toBe(145)
     expect(band[2]).toBeGreaterThan(band[0])
     expect(band[5]).toBe(255)
     expect(band[8]).toBeGreaterThan(band[10])
-    expect(band[10]).toBe(60)
+    expect(band[10]).toBe(145)
     // The peak sweeps right as the phase advances.
     const peakAt = (phase: number): number => {
       let best = 0
@@ -1004,8 +1004,8 @@ describe('Ink 7 full-screen render', () => {
       return best
     }
     expect(peakAt(4)).toBeLessThan(peakAt(10))
-    // Grayscale hex encoding: base and peak.
-    expect(thinkingShimmerHex(60)).toBe('#3c3c3c')
+    // Grayscale hex encoding: readable base and peak.
+    expect(thinkingShimmerHex(145)).toBe('#919191')
     expect(thinkingShimmerHex(255)).toBe('#ffffff')
   })
 })
