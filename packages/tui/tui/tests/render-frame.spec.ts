@@ -12,7 +12,7 @@ import { createElement } from 'react'
 import { describe, expect, it, afterEach } from 'vitest'
 import { render } from 'ink'
 import stringWidth from 'string-width'
-import { App, permissionColor, permissionLabel, thinkingShimmerHex, thinkingShimmerLevel, traceLineColor } from '../src/render'
+import { App, brandGlyph, permissionColor, permissionLabel, thinkingShimmerHex, thinkingShimmerLevel, traceLineColor } from '../src/render'
 import type { TuiHost } from '../src/render'
 import { createTuiStore } from '../src/store'
 import type { TuiStore } from '../src/store'
@@ -49,7 +49,7 @@ function plain(output: string): string[] {
 
 /** The last frame's rows (each frame starts with the header title). */
 function lastFrameLines(output: string): string[] {
-  const marker = '◆ DSH-TUI'
+  const marker = 'DSH-TUI'
   const index = output.lastIndexOf(marker)
   if (index === -1) throw new Error(`header not found in ${JSON.stringify(output.slice(0, 400))}`)
   return plain(output.slice(index))
@@ -1032,5 +1032,28 @@ describe('Ink 7 full-screen render', () => {
     // Grayscale hex encoding: readable base and peak.
     expect(thinkingShimmerHex(145)).toBe('#919191')
     expect(thinkingShimmerHex(255)).toBe('#ffffff')
+  })
+
+  it('picks the whale brand glyph only on width-correct terminals', () => {
+    expect(brandGlyph({ WT_SESSION: 'x' })).toBe('🐋')
+    expect(brandGlyph({ TERM: 'xterm-256color' })).toBe('🐋')
+    expect(brandGlyph({ TERM: 'dumb' })).toBe('✦')
+    // Legacy Windows conhost without a modern-terminal marker degrades.
+    expect(brandGlyph({})).toBe('✦')
+    // The header measures the brand by its real width either way.
+    expect(stringWidth(`${brandGlyph({ WT_SESSION: 'x' })} DSH-TUI`)).toBe(10)
+    expect(stringWidth(`${brandGlyph({})} DSH-TUI`)).toBe(9)
+  })
+
+  it('sets the whale tab title on mount and keeps the frame clean', async () => {
+    const { capture, unmount } = await mount()
+    try {
+      expect(capture.output).toContain('\x1b]0;🐋 DeepSeek Harness\x07')
+      expect(capture.output).toContain('\x1b[21t')
+      const lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('DSH-TUI'))).toBe(true)
+    } finally {
+      unmount()
+    }
   })
 })

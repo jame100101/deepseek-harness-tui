@@ -362,6 +362,42 @@ export function thinkingShimmerHex(level: number): string {
   return `#${value}${value}${value}`
 }
 
+/**
+ * The brand glyph leading the header title. The whale emoji needs a
+ * width-correct terminal (modern terminals measure it as two cells); on
+ * legacy environments that mishandle emoji width it degrades to a narrow
+ * glyph so the row alignment never breaks.
+ * @param env - the environment mapping.
+ * @returns the glyph.
+ */
+export function brandGlyph(env: Record<string, string | undefined>): string {
+  if (env.TERM === 'dumb') return '✦'
+  if (env.TERM_PROGRAM === 'Apple_Terminal') return '✦'
+  const modern = env.WT_SESSION !== undefined
+    || env.ConEmuANSI !== undefined
+    || env.TERM_PROGRAM !== undefined
+    || env.TERM?.startsWith('xterm') === true
+    || env.TERM?.includes('256color') === true
+    || env.COLORTERM !== undefined
+  // Legacy Windows conhost (no modern-terminal marker) measures emoji
+  // inconsistently.
+  if (process.platform === 'win32' && !modern) return '✦'
+  return '🐋'
+}
+
+/**
+ * Set the terminal tab/window title through the standard OSC sequence. The
+ * previous title is queried first (`ESC[21t`); the report arrives on stdin
+ * and is captured for restore on exit. Terminals without title support
+ * ignore the writes silently.
+ */
+function installTerminalTitle(stdout: { write(chunk: string): unknown }, report: { current: string }): () => void {
+  stdout.write('\x1b[21t')
+  stdout.write('\x1b]0;🐋 DeepSeek Harness\x07')
+  return () => {
+    if (report.current !== '') stdout.write(`\x1b]0;${report.current}\x07`)
+  }
+}
 /** Host callbacks the renderer drives; supplied by the plugin. */
 export interface TuiHost {
   submit(text: string, steer: boolean): void
@@ -650,13 +686,14 @@ function Header(props: {
   const snapshot = props.snapshot
   const thinking = snapshot.settings?.general.thinking === 'expanded' ? 'on' : 'off'
   const busyEnter = snapshot.settings?.general.busyEnter ?? 'queue'
+  const brand = `${brandGlyph(process.env)} DSH-TUI`
   // Both sides budget against the PHYSICAL width: an overflowing side would
   // wrap onto the next row and corrupt the frame on narrow windows.
   const sessionRight = `session ${snapshot.sessionId}`
   const rows: { left: { text: string; color?: string; bold?: boolean }; right: string }[] = [
     {
-      left: { text: '◆ DSH-TUI', color: 'cyan', bold: true },
-      right: fitDisplayText(sessionRight, Math.max(6, props.width - stringWidth('◆ DSH-TUI') - 2)),
+      left: { text: brand, color: 'cyan', bold: true },
+      right: fitDisplayText(sessionRight, Math.max(6, props.width - stringWidth(brand) - 2)),
     },
     {
       left: { text: shorten(snapshot.cwd, Math.max(4, props.width - stringWidth(`thinking ${thinking}`) - 2)) },
@@ -887,6 +924,9 @@ function ImeTextInput(props: {
       // a split arrow sequence, not text: swallow it (App re-synthesizes the
       // key) so it can never pollute the draft.
       if (escapeArbiter.hasPending() && csiTailKey(input) !== null) return
+      // A terminal title report (OSC answer to the title query) is metadata,
+      // never draft content — swallow both whole and split forms.
+      if (input.startsWith(']l') || input.startsWith('\x1b]l')) return
       if (props.reserveKeys?.(input) === true) return
       if (
         key.upArrow ||
@@ -1258,11 +1298,17 @@ export function App(props: {
 
   useEffect(() => {
     stdout.write(ENABLE_WHEEL_MOUSE)
-    // The terminal tab reads this session as DSH-TUI instead of the shell.
-    stdout.write('\x1b]0;DSH-TUI\x07')
     return () => { stdout.write(DISABLE_WHEEL_MOUSE) }
   }, [stdout])
-
+  // Terminal tab/window title: set `🐋 DeepSeek Harness` at mount through
+  // the OSC sequence, keep it for the session, and restore the previous
+  // title (captured from the `ESC[21t` report arriving on stdin) on exit.
+  // Terminals without title support ignore the writes silently.
+  const restoredTitleRef = useRef('')
+  useEffect(() => {
+    const restore = installTerminalTitle(stdout, restoredTitleRef)
+    return restore
+  }, [stdout])
   // The thinking timer, gradient tick, and retry countdown shimmer while a
   // turn streams, a compaction runs, or a retry wait is pending.
   const hasPendingRetry = snapshot.nodes.some(node => node.kind === 'retry' && !node.started && node.retryAt > Date.now())
@@ -2012,6 +2058,15 @@ export function App(props: {
   useEffect(() => () => { escapeArbiter.cancel() }, [])
 
   useInput((input, key) => {
+    // The terminal's title report (the `ESC]l<title>ESC\` answer to our
+    // `ESC[21t` query) must never reach the composer; capture it for the
+    // exit restore. The head may arrive split from the tail.
+    const titleReport = /^\x1b?\]l([^\x07\x1b]*)\x1b?(?:\\|\x07)$/.exec(input)
+    if (titleReport !== null) {
+      restoredTitleRef.current = titleReport[1] ?? ''
+      return
+    }
+    if (input.startsWith(']l')) return
     if (key.escape) {
       escapeArbiter.schedule(() => { handleEscape() })
       return
