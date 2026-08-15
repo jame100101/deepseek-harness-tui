@@ -16,7 +16,7 @@ export interface TranscriptLine {
   color?: string
   bold?: boolean
   dim?: boolean
-  runs?: { text: string; bold?: boolean; code?: boolean; underline?: boolean; dim?: boolean }[]
+  runs?: { text: string; bold?: boolean; code?: boolean; underline?: boolean; dim?: boolean; color?: string }[]
 }
 
 /** The visible slice plus its scroll bookkeeping. */

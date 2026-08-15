@@ -53,6 +53,10 @@ describe('session fold', () => {
     const tools = state.nodes.filter(node => node.kind === 'tool')
     expect(tools.map(node => (node.kind === 'tool' ? node.status : undefined))).toEqual(['done', 'done'])
     expect(tools[0]?.text).toBe('line one')
+    // The think row carries the block's thinking time: first reasoning chunk
+    // at t=100, flushed by the first tool call at t=120 → 20ms.
+    const think = state.nodes.find(node => node.kind === 'think')
+    expect(think?.kind === 'think' && think.durationMs).toBe(20)
     const assistant = state.nodes.findLast(node => node.kind === 'assistant')
     expect(assistant?.text).toBe('All green.')
     // The assistant row carries the message id for durable feedback targets.

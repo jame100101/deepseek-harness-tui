@@ -117,19 +117,20 @@ function lastRetryChain(nodes: readonly TuiNode[], retryId: string): number {
  * new one. A new user/assistant message boundary opens a fresh block, so one
  * turn renders ONE collapsible Thinking row no matter how many tool calls
  * split its reasoning stream (the TS DamnatioX displays one thought block per
- * message entry).
+ * message entry). Durations accumulate across appended segments so the row
+ * carries the whole block's thinking time (0.1s display precision).
  */
-function flushThink(nodes: TuiNode[], id: number, text: string): void {
+function flushThink(nodes: TuiNode[], id: number, text: string, durationMs: number): void {
   for (let index = nodes.length - 1; index >= 0; index--) {
     const node = nodes[index]
     if (node === undefined) continue
     if (node.kind === 'user' || node.kind === 'assistant') break
     if (node.kind === 'think') {
-      nodes[index] = { ...node, text: node.text + text, id }
+      nodes[index] = { ...node, text: node.text + text, id, durationMs: node.durationMs + durationMs }
       return
     }
   }
-  nodes.push({ kind: 'think', id, text })
+  nodes.push({ kind: 'think', id, text, durationMs })
 }
 
 /** Producer label for a non-user message source. */
@@ -297,7 +298,7 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
     case 'assistant/message': {
       if (live !== null && live.think !== '') {
         nodes = [...nodes]
-        flushThink(nodes, event.seq, live.think)
+        flushThink(nodes, event.seq, live.think, Math.max(0, event.time - (live.thinkSince ?? event.time)))
       }
       const text = blocksText(event.data.message.content, 0)
       nodes = [...nodes, { kind: 'assistant', id: event.seq, text, messageId: event.data.message.id }]
@@ -313,7 +314,7 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
       // flush it as a settled think row so it renders before the tool rows.
       if (live !== null && live.think !== '') {
         nodes = [...nodes]
-        flushThink(nodes, event.seq, live.think)
+        flushThink(nodes, event.seq, live.think, Math.max(0, event.time - (live.thinkSince ?? event.time)))
         live = { ...live, think: '', thinkSince: null }
       }
       nodes = [...nodes, {

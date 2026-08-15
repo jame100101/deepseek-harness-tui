@@ -332,6 +332,14 @@ export function traceLineColor(text: string): 'blue' | 'red' | 'cyan' | undefine
   return undefined
 }
 
+/** The muted dark shimmer palette swept across the live "Thinking" letters. */
+const THINKING_GRADIENT = ['blackBright', 'gray', 'whiteBright', 'cyan'] as const
+
+/** One character's color in the live Thinking shimmer wave. */
+export function thinkingGradientColor(index: number, phase: number): string {
+  return THINKING_GRADIENT[(index + phase) % THINKING_GRADIENT.length] ?? 'gray'
+}
+
 /** Host callbacks the renderer drives; supplied by the plugin. */
 export interface TuiHost {
   submit(text: string, steer: boolean): void
@@ -506,7 +514,8 @@ function nodeLines(
       return withKey(lines.filter(line => line.text !== '' || (line.runs?.length ?? 0) > 0))
     }
     case 'think': {
-      const head = wrapText(marker + (expanded ? `✓ Thinking ▼` : `✓ Thinking ▶`), width).map(text => ({
+      const durationLabel = `${(node.durationMs / 1000).toFixed(1)}s`
+      const head = wrapText(marker + (expanded ? `✓ Thinking ${durationLabel} ▼` : `✓ Thinking ${durationLabel} ▶`), width).map(text => ({
         text, color: 'magenta', dim: !expanded,
       }))
       const body = expanded
@@ -578,10 +587,22 @@ function Header(props: {
   const snapshot = props.snapshot
   const thinking = snapshot.settings?.general.thinking === 'expanded' ? 'on' : 'off'
   const busyEnter = snapshot.settings?.general.busyEnter ?? 'queue'
+  // Both sides budget against the PHYSICAL width: an overflowing side would
+  // wrap onto the next row and corrupt the frame on narrow windows.
+  const sessionRight = `session ${snapshot.sessionId}`
   const rows: { left: { text: string; color?: string; bold?: boolean }; right: string }[] = [
-    { left: { text: '◆ DSH-TUI', color: 'cyan', bold: true }, right: fitDisplayText(`session ${snapshot.sessionId}`, Math.max(16, props.width - stringWidth('◆ DSH-TUI') - 2)) },
-    { left: { text: shorten(snapshot.cwd, Math.max(18, props.width - 16)) }, right: `thinking ${thinking}` },
-    { left: { text: `${snapshot.model} · busyEnter ${busyEnter}`, color: 'magenta' }, right: `${snapshot.nodes.length} events` },
+    {
+      left: { text: '◆ DSH-TUI', color: 'cyan', bold: true },
+      right: fitDisplayText(sessionRight, Math.max(6, props.width - stringWidth('◆ DSH-TUI') - 2)),
+    },
+    {
+      left: { text: shorten(snapshot.cwd, Math.max(4, props.width - stringWidth(`thinking ${thinking}`) - 2)) },
+      right: `thinking ${thinking}`,
+    },
+    {
+      left: { text: shorten(`${snapshot.model} · busyEnter ${busyEnter}`, Math.max(4, props.width - stringWidth(`${snapshot.nodes.length} events`) - 2)), color: 'magenta' },
+      right: `${snapshot.nodes.length} events`,
+    },
   ]
   return (
     <Box flexDirection="column">
@@ -639,7 +660,11 @@ function Transcript(props: {
           {line.runs !== undefined && line.runs.length > 0
             ? line.runs.map((run, runIndex) => (
                 <Text key={runIndex} bold={run.bold === true} underline={run.underline === true} dimColor={run.dim === true}
-                  {...run.code === true ? { color: themed('cyan', props.theme, 'cyan') } : {}}>
+                  {...run.color !== undefined
+                    ? { color: themed(run.color, props.theme, 'white') }
+                    : run.code === true
+                      ? { color: themed('cyan', props.theme, 'cyan') }
+                      : {}}>
                   {run.text}
                 </Text>
               ))
@@ -675,7 +700,7 @@ function PanelView(props: {
   return (
     <Box flexDirection="column" flexGrow={1} height={Math.max(1, props.height)} overflow="hidden" paddingX={1}>
       {viewport.lines.map((line, index) => (
-        <Text key={index} color={themed(line.color, props.theme, 'white')} bold={line.bold === true} dimColor={line.dim === true}>
+        <Text key={index} wrap="truncate" color={themed(line.color, props.theme, 'white')} bold={line.bold === true} dimColor={line.dim === true}>
           {line.text}
         </Text>
       ))}
@@ -1005,17 +1030,23 @@ function StatusBar(props: {
   const effortLabel = snapshot.reasoning.effort ?? copy.effortOff
   const effortText = `${copy.effort} ${effortLabel}`
   const rightRest = ` · ${copy.turn} ${snapshot.stats.turns} · ↑${snapshot.stats.tokens.input} ↓${snapshot.stats.tokens.output} Σ${snapshot.stats.tokens.input + snapshot.stats.tokens.output + snapshot.stats.tokens.cacheRead + snapshot.stats.tokens.cacheWrite + snapshot.stats.tokens.reasoning} tok`
+  // Narrow windows drop the right-side counters instead of wrapping them
+  // onto the strip row below.
+  const showRight = props.width >= 52
+  const leftBudget = Math.max(4, props.width - 2 - (showRight ? stringWidth(effortText) + stringWidth(rightRest) + 1 : 0))
   return (
     <Box flexDirection="column">
       <Text dimColor>{'─'.repeat(Math.max(1, props.width))}</Text>
       <Box justifyContent="space-between" paddingX={1}>
-        <Text color={themed(snapshot.busy ? 'yellow' : 'cyan', props.theme, 'cyan')}>{shorten(left, props.width - stringWidth(effortText) - stringWidth(rightRest) - 3)}</Text>
-        <Box>
-          <Text bold color={themed('magenta', props.theme, 'magenta')}>{effortText}</Text>
-          <Text dimColor>{rightRest}</Text>
-        </Box>
+        <Text wrap="truncate" color={themed(snapshot.busy ? 'yellow' : 'cyan', props.theme, 'cyan')}>{shorten(left, leftBudget)}</Text>
+        {showRight ? (
+          <Box>
+            <Text bold color={themed('magenta', props.theme, 'magenta')}>{effortText}</Text>
+            <Text dimColor>{rightRest}</Text>
+          </Box>
+        ) : null}
       </Box>
-      <Text dimColor>{fitStatsStrip(formatStats(snapshot.stats, props.locale, snapshot.occupancy), props.width - 2)}</Text>
+      <Text dimColor wrap="truncate">{fitStatsStrip(formatStats(snapshot.stats, props.locale, snapshot.occupancy), props.width - 2)}</Text>
     </Box>
   )
 }
@@ -1023,17 +1054,23 @@ function StatusBar(props: {
 /** The pinned permission row above the composer: mode label colored by policy plus the Shift+Tab hint. */
 function PermissionBar(props: {
   snapshot: ReturnType<TuiStore['getSnapshot']>
+  width: number
   locale: Locale
   theme: 'dark' | 'light'
 }): React.ReactElement {
   const copy = COPY[props.locale]
-  const label = permissionLabel(props.snapshot.sandbox)
+  const chip = copy.permissionChip(permissionLabel(props.snapshot.sandbox))
+  const hint = copy.permissionHint
+  const space = Math.max(4, props.width - 2)
+  const hintFits = stringWidth(hint) <= space - 10
+  const chipMax = Math.max(4, space - (hintFits ? stringWidth(hint) : 0))
+  const chipText = stringWidth(chip) <= chipMax ? chip : fitDisplayText(chip, chipMax)
   return (
     <Box paddingX={1}>
-      <Text bold color={themed(permissionColor(props.snapshot.sandbox), props.theme, 'white')}>
-        {copy.permissionChip(label)}
+      <Text bold wrap="truncate" color={themed(permissionColor(props.snapshot.sandbox), props.theme, 'whiteBright')}>
+        {chipText}
       </Text>
-      <Text dimColor>{copy.permissionHint}</Text>
+      {hintFits ? <Text dimColor wrap="truncate">{hint}</Text> : null}
     </Box>
   )
 }
@@ -1055,29 +1092,29 @@ function Takeover(props: {
     <Box flexDirection="column" paddingX={1}>
       {approval !== null ? (
         <>
-          <Text color="yellow" bold>{`${copy.approval}${approval.toolName}`}</Text>
-          {approval.reason !== undefined && approval.reason !== '' && <Text dimColor>({sanitizeTerminalText(approval.reason)})</Text>}
-          <Text bold={props.approvalSel === 0} {...props.approvalSel === 0 ? { color: 'yellow' } : {}}>
+          <Text wrap="truncate" color="yellow" bold>{`${copy.approval}${approval.toolName}`}</Text>
+          {approval.reason !== undefined && approval.reason !== '' && <Text wrap="truncate" dimColor>({sanitizeTerminalText(approval.reason)})</Text>}
+          <Text wrap="truncate" bold={props.approvalSel === 0} {...props.approvalSel === 0 ? { color: 'yellow' } : {}}>
             {props.approvalSel === 0 ? '▸' : ' '} {copy.allowOnce}
           </Text>
-          <Text bold={props.approvalSel === 1} {...props.approvalSel === 1 ? { color: 'yellow' } : {}}>
+          <Text wrap="truncate" bold={props.approvalSel === 1} {...props.approvalSel === 1 ? { color: 'yellow' } : {}}>
             {props.approvalSel === 1 ? '▸' : ' '} {copy.deny}
           </Text>
-          <Text dimColor>{copy.approvalHint}</Text>
+          <Text wrap="truncate" dimColor>{copy.approvalHint}</Text>
         </>
       ) : question !== undefined ? (
         <>
-          <Text color="yellow" bold>? {sanitizeTerminalText(question.question)}</Text>
-          {question.detail !== undefined && <Text dimColor>{sanitizeTerminalText(question.detail)}</Text>}
+          <Text wrap="truncate" color="yellow" bold>? {sanitizeTerminalText(question.question)}</Text>
+          {question.detail !== undefined && <Text wrap="truncate" dimColor>{sanitizeTerminalText(question.detail)}</Text>}
           {(question.options ?? []).length > 0 && props.questionText === ''
             ? (question.options ?? []).map((option, index) => (
-                <Text key={option.label} bold={index === props.questionSel} {...index === props.questionSel ? { color: 'yellow' } : {}}>
+                <Text wrap="truncate" key={option.label} bold={index === props.questionSel} {...index === props.questionSel ? { color: 'yellow' } : {}}>
                   {index === props.questionSel ? '▸' : ' '} ○ {sanitizeTerminalText(option.label)}
                   {option.description !== undefined ? ` · ${sanitizeTerminalText(option.description)}` : ''}
                 </Text>
               ))
-            : <Text color="cyan">› {props.questionText || copy.questionInput}</Text>}
-          <Text dimColor>{copy.questionHint}</Text>
+            : <Text wrap="truncate" color="cyan">› {props.questionText || copy.questionInput}</Text>}
+          <Text wrap="truncate" dimColor>{copy.questionHint}</Text>
         </>
       ) : null}
     </Box>
@@ -1102,8 +1139,11 @@ export function App(props: {
     width: stdout.columns ?? 100,
     height: stdout.rows ?? 30,
   }))
-  const width = Math.max(40, terminalSize.width)
-  const rowCount = Math.max(10, terminalSize.height)
+  // The layout must never exceed the PHYSICAL terminal: a frame wider or
+  // taller than the window wraps rows onto each other (text bleeding into
+  // the next line, broken borders). The floors are sanity guards only.
+  const width = Math.max(20, terminalSize.width)
+  const rowCount = Math.max(6, terminalSize.height)
 
   const [tick, setTick] = useState(0)
   const [draft, setDraft] = useState('')
@@ -1208,11 +1248,10 @@ export function App(props: {
   const expandedOf = (node: TuiNode): boolean => node.kind === 'think'
     ? expanded.has(node.id) || (thinkDefaultOpen && !thinkCollapsed.has(node.id))
     : expanded.has(node.id)
-  // The 100ms tick drives the spinner frame and, SLOWLY, the think color
-  // phase (800ms per color) and the retry shimmer (500ms per flip). Settled
-  // node projections stay out of the tick: recomputing up to 800 nodes ten
-  // times a second during a busy turn is the tool-use performance killer.
-  const thinkPhase = Math.floor(tick / 8)
+  // The 100ms tick drives the spinner frame, the live Thinking shimmer, and
+  // the retry shimmer (500ms per flip). Settled node projections stay out of
+  // the tick: recomputing up to 800 nodes ten times a second during a busy
+  // turn is the tool-use performance killer.
   const retryShimmer = hasPendingRetry && Math.floor(tick / 5) % 2 === 0
   const settledLines = useMemo((): TranscriptLine[] => {
     if (viewMode === 'trajectory') {
@@ -1233,7 +1272,8 @@ export function App(props: {
     const nodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 800))
     const lines: TranscriptLine[] = []
     if (nodes.length === 0) {
-      welcomeBlock(width, snapshot.model, snapshot.cwd, snapshot.sessionId, locale).forEach((line, index) => {
+      // Content width: the transcript box adds one padding cell per side.
+      welcomeBlock(width - 2, snapshot.model, snapshot.cwd, snapshot.sessionId, locale).forEach((line, index) => {
         const chrome = line.startsWith('┏') || line.startsWith('┃') || line.startsWith('┗')
         lines.push({ key: `welcome-${index}`, text: line, ...(chrome ? { color: 'yellow' } : { dim: true }) })
       })
@@ -1246,29 +1286,29 @@ export function App(props: {
   const liveThinkLines = useMemo((): TranscriptLine[] => {
     if (snapshot.live === null || !snapshot.busy || snapshot.live.think === '') return []
     const spinner = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    // Light gradient: cyan → yellow → green reads soft against dark terminals.
-    const paletteColors = ['cyan', 'yellow', 'green']
+    // Claude Code style: a muted dark shimmer sweeps across the "Thinking"
+    // letters themselves, never recoloring the whole row.
+    const phase = Math.floor(tick / 3)
     const elapsed = snapshot.live.thinkSince === null ? 0 : Date.now() - snapshot.live.thinkSince
-    const color = paletteColors[thinkPhase % paletteColors.length]
+    const label = 'Thinking'
+    const runs = [
+      { text: `${spinner[tick % spinner.length]} `, color: 'gray' },
+      ...[...label].map((character, index) => ({ text: character, color: thinkingGradientColor(index, phase) })),
+      { text: ` ${(elapsed / 1000).toFixed(1)}s ▶`, dim: true },
+    ]
     // Stable keys: these rows re-render every tick; a position-derived
     // key would churn as the transcript grows and can leave stale rows.
-    const lines: TranscriptLine[] = [{
-      key: 'live-think',
-      text: `${spinner[tick % spinner.length]} Thinking ${(elapsed / 1000).toFixed(1)}s ▶`,
-      ...(color !== undefined ? { color } : {}),
-    }]
+    const lines: TranscriptLine[] = [{ key: 'live-think', text: '', runs }]
     const tail = snapshot.live.think.split('\n').at(-1) ?? ''
     if (tail !== '') {
-      const tailColor = paletteColors[(thinkPhase + 1) % paletteColors.length]
       lines.push({
         key: 'live-think-tail',
         text: `  │ ${tail.slice(-60)}`,
-        ...(tailColor !== undefined ? { color: tailColor } : {}),
         dim: true,
       })
     }
     return lines
-  }, [snapshot.live, snapshot.busy, width, tick, thinkPhase])
+  }, [snapshot.live, snapshot.busy, width, tick])
   const liveTextLines = useMemo((): TranscriptLine[] => {
     if (snapshot.live === null || !snapshot.busy || snapshot.live.text === '') return []
     return wrapText(`● ${snapshot.live.text}▌`, width - 2).map((text, index) => ({
@@ -2183,7 +2223,7 @@ export function App(props: {
           locale={locale}
         />
       ) : null}
-      <PermissionBar snapshot={snapshot} locale={locale} theme={theme} />
+      <PermissionBar snapshot={snapshot} width={width} locale={locale} theme={theme} />
       <Composer
         draft={composerDraft}
         onDraftChange={pluginEdit !== null

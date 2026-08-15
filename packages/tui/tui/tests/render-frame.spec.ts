@@ -11,7 +11,8 @@ import { Writable, PassThrough } from 'node:stream'
 import { createElement } from 'react'
 import { describe, expect, it, afterEach } from 'vitest'
 import { render } from 'ink'
-import { App, permissionColor, permissionLabel, traceLineColor } from '../src/render'
+import stringWidth from 'string-width'
+import { App, permissionColor, permissionLabel, thinkingGradientColor, traceLineColor } from '../src/render'
 import type { TuiHost } from '../src/render'
 import { createTuiStore } from '../src/store'
 import type { TuiStore } from '../src/store'
@@ -914,4 +915,60 @@ describe('Ink 7 full-screen render', () => {
       unmount()
     }
   }, 30_000)
+
+  it('labels a settled Thinking row with its 0.1s-precision duration', async () => {
+    const { capture, unmount } = await mount([{ kind: 'think', id: 1, text: 'reasoning here', durationMs: 3456 }])
+    try {
+      const lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('✓ Thinking 3.5s ▶'))).toBe(true)
+    } finally {
+      unmount()
+    }
+  })
+
+  it('sweeps the muted Claude-style gradient across the live Thinking letters only', async () => {
+    const { store, capture, unmount } = await mount([{ kind: 'user', id: 1, text: 'hi' }])
+    try {
+      const snapshot = store.getSnapshot()
+      store.set({
+        ...snapshot,
+        version: snapshot.version + 1,
+        busy: true,
+        live: { text: '', think: '正在推理', thinkSince: Date.now() },
+      })
+      await new Promise<void>(resolve => setTimeout(resolve, 400))
+      const lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('Thinking'))).toBe(true)
+      // The wave palette is a pure mapping: dark gray → gray → bright white → cyan.
+      expect(thinkingGradientColor(0, 0)).toBe('blackBright')
+      expect(thinkingGradientColor(1, 0)).toBe('gray')
+      expect(thinkingGradientColor(2, 0)).toBe('whiteBright')
+      expect(thinkingGradientColor(3, 0)).toBe('cyan')
+      expect(thinkingGradientColor(0, 1)).toBe('gray') // the wave moves per tick
+    } finally {
+      unmount()
+    }
+  })
+
+  it('reflows to a shrunken terminal without rows bleeding into each other', async () => {
+    const { capture, unmount } = await mount()
+    try {
+      capture.columns = 30
+      capture.rows = 20
+      capture.emit('resize')
+      await new Promise<void>(resolve => setTimeout(resolve, 320))
+      const lines = lastFrameLines(capture.output)
+      expect(frameRows(lines)).toBe(20)
+      // No rendered row may exceed the physical width — the wrap would push
+      // its tail onto the next row (the overlap bug).
+      for (const line of lines) {
+        expect(stringWidth(line)).toBeLessThanOrEqual(30)
+      }
+      // The welcome panel's borders stay on one intact row each.
+      expect(lines.some(line => line.trimStart().startsWith('┏') && line.trimEnd().endsWith('┓'))).toBe(true)
+      expect(lines.some(line => line.trimStart().startsWith('┗') && line.trimEnd().endsWith('┛'))).toBe(true)
+    } finally {
+      unmount()
+    }
+  })
 })

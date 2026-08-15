@@ -398,9 +398,10 @@ function wrapCells(text: string, width: number): string[] {
 
 /**
  * The welcome block: a `┏━┓` panel listing the model, workspace, session,
- * and the starter hint. Adapts to the terminal width (30 minimum, 112
- * maximum).
- * @param width - available terminal cells.
+ * and the starter hint. `width` is the CONTENT width available to the panel
+ * (the renderer passes terminal width minus its padding), so the borders
+ * always fit one row even on narrow windows.
+ * @param width - available content cells for the panel.
  * @param model - the active model id.
  * @param cwd - the workspace path.
  * @param sessionId - the full session id.
@@ -408,12 +409,17 @@ function wrapCells(text: string, width: number): string[] {
  * @returns the rendered lines.
  */
 export function welcomeBlock(width: number, model: string, cwd: string, sessionId: string, locale: 'zh' | 'en' = 'zh'): string[] {
-  const usable = Math.max(30, width)
-  const panelWidth = Math.max(30, Math.min(usable, 112))
+  const panelWidth = Math.max(20, Math.min(Math.max(20, width), 112))
   const innerWidth = panelWidth - 2
-  const label = ' dsh-tui v0.0.13 · DeepSeek Harness '
+  const fullLabel = ' dsh-tui v0.0.13 · DeepSeek Harness '
   const leftRule = 3
-  const rightRule = Math.max(0, innerWidth - leftRule - stringWidth(label))
+  // The label must fit between the rules or the top border overflows its
+  // panel (the deformation seen when the window shrinks).
+  const labelSpace = Math.max(1, innerWidth - leftRule)
+  const label = stringWidth(fullLabel) <= labelSpace
+    ? fullLabel
+    : `${fullLabel.slice(0, Math.max(1, labelSpace - 1))}…`
+  const rightRule = Math.max(0, labelSpace - stringWidth(label))
   const lines: string[] = [`┏${'━'.repeat(leftRule)}${label}${'━'.repeat(rightRule)}┓`]
   const details = locale === 'en'
     ? [
