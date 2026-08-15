@@ -254,6 +254,7 @@ async function mount(nodes: readonly TuiNode[] = [], hostOverrides: Partial<TuiH
     setCredential: () => Promise.resolve(),
     unsetCredential: () => Promise.resolve(),
     refreshPanels: () => {},
+    refreshSettings: () => {},
     killJob: () => {},
     rateMessage: () => Promise.resolve(null),
     resumeSession: () => Promise.resolve(null),
@@ -395,6 +396,80 @@ describe('Ink 7 full-screen render', () => {
     }
   })
 
+  it('draws the right-edge scrollbar and jumps/drags through history with mouse reports', async () => {
+    const nodes: TuiNode[] = Array.from({ length: 40 }, (_, index) => ({
+      kind: 'user', id: index, text: `第${index}行`,
+    }))
+    const { capture, unmount, type } = await mount(nodes)
+    try {
+      // Scroll up once: the rail and the thumb appear on the right edge.
+      await type('\x1b[5~')
+      let lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.endsWith('│'))).toBe(true)
+      expect(lines.some(line => line.endsWith('█'))).toBe(true)
+      // The gutter accepts the rail column AND the adjacent margin cell
+      // (2-cell click target): a press there on the TOP row jumps to the
+      // OLDEST lines.
+      await type('\x1b[<0;99;5M')
+      await type('\x1b[<0;99;5m')
+      lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('▸ 第0行'))).toBe(true)
+      // Drag (button-motion) partway down: the oldest lines leave the frame
+      // while the back-to-bottom button stays pinned.
+      await type('\x1b[<0;100;5M')
+      await type('\x1b[<32;100;14M')
+      await type('\x1b[<0;100;14m')
+      lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('▸ 第0行'))).toBe(false)
+      expect(lines.some(line => line.includes('▼ 回到底部'))).toBe(true)
+      // A press on the bottom content row returns to the newest lines.
+      await type('\x1b[<0;99;23M')
+      await type('\x1b[<0;99;23m')
+      lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('▸ 第39行'))).toBe(true)
+      expect(lines.some(line => line.includes('▼ 回到底部'))).toBe(false)
+    } finally {
+      unmount()
+    }
+  })
+
+  it('keeps the scrollbar gutter straight when dock rows are overlong', async () => {
+    const nodes: TuiNode[] = Array.from({ length: 40 }, (_, index) => ({
+      // ⚙ is a width-table trap: string-width v7 (used for wrapping) counts
+      // 2 cells while Ink's internal v8 counts 1. The old implementation
+      // computed the rail position from v7 widths, so every row containing
+      // such a glyph rendered its rail off-column. The gutter is now its own
+      // Box, so no width arithmetic can shift it.
+      kind: 'user', id: index, text: `第${index}行 ⚙`,
+    }))
+    const { store, capture, unmount } = await mount(nodes)
+    try {
+      // A 480-cell CJK goal objective plus a long queued preview used to make
+      // dock rows WIDER than the transcript: the overflow wrapped the row
+      // (and with it the old in-row rail char) onto the next line, scattering
+      // the scrollbar. Docks now truncate to the content width, so the frame
+      // keeps its exact rows and the gutter stays one straight column even
+      // with the docks visible at the tail.
+      const snapshot = store.getSnapshot()
+      store.set({
+        ...snapshot,
+        version: snapshot.version + 1,
+        goal: { objective: '重构目标'.repeat(120), phase: 'active', revision: 1, roundsStarted: 0, maxGoalRounds: 12, createdAt: 1, updatedAt: 1 },
+        queued: [{ text: '排队任务'.repeat(100), steer: false }],
+      })
+      await new Promise<void>(resolve => setTimeout(resolve, 320))
+      const lines = lastFrameLines(capture.output)
+      expect(frameRows(lines)).toBe(ROWS)
+      // Every transcript row still ends in exactly one gutter cell (rail or
+      // thumb) — never wrapped text pushed into or out of the column.
+      const transcriptRows = lines.slice(4, 24)
+      expect(transcriptRows.every(line => line.endsWith('│') || line.endsWith('█'))).toBe(true)
+      expect(transcriptRows.some(line => line.includes('…'))).toBe(true)
+    } finally {
+      unmount()
+    }
+  })
+
   it('opens the settings panel from the slash picker and exits with q', async () => {
     const { capture, unmount, type } = await mount()
     try {
@@ -406,6 +481,24 @@ describe('Ink 7 full-screen render', () => {
       await type('q')
       lines = lastFrameLines(capture.output)
       expect(lines.some(line => line.includes('常规 General'))).toBe(false)
+    } finally {
+      unmount()
+    }
+  })
+
+  it('refreshes the settings data whenever the settings panel opens', async () => {
+    const refreshes: number[] = []
+    const { unmount, type } = await mount([{ kind: 'user', id: 1, text: 'hi' }], {
+      refreshSettings: () => { refreshes.push(1) },
+    })
+    try {
+      await type('/settings')
+      await type('\r')
+      await type('q')
+      await type('/settings plugins')
+      await type('\r')
+      expect(refreshes).toEqual([1, 1])
+      await type('q')
     } finally {
       unmount()
     }

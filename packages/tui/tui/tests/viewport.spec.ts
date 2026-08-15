@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  nextCodePointBoundary, previousCodePointBoundary, selectComposerLayout, selectInputViewport, selectPanelViewport, selectTranscriptViewport,
+  nextCodePointBoundary, previousCodePointBoundary, scrollOffsetForScrollbarRow, selectComposerLayout, selectInputViewport,
+  selectPanelViewport, selectScrollbar, selectTranscriptViewport,
 } from '../src/viewport'
 import type { TranscriptLine } from '../src/viewport'
 
@@ -76,6 +77,69 @@ describe('selectPanelViewport', () => {
     const viewport = selectPanelViewport([], 5, 0)
     expect(viewport.lines).toEqual([])
     expect(viewport.maximumOffset).toBe(0)
+  })
+})
+
+describe('selectScrollbar', () => {
+  it('hides when the transcript fits the viewport', () => {
+    const scrollbar = selectScrollbar(10, 10, 0)
+    expect(scrollbar.visible).toBe(false)
+    expect(scrollbar.contentHeight).toBe(10)
+  })
+
+  it('shows once the transcript overflows and pins the thumb to the bottom in follow mode', () => {
+    const scrollbar = selectScrollbar(30, 10, 0)
+    expect(scrollbar.visible).toBe(true)
+    expect(scrollbar.contentHeight).toBe(10)
+    expect(scrollbar.thumbHeight).toBeGreaterThanOrEqual(1)
+    expect(scrollbar.thumbHeight).toBeLessThanOrEqual(10)
+    // Offset 0 = newest lines → thumb at the bottom of the column.
+    expect(scrollbar.thumbTop + scrollbar.thumbHeight).toBe(10)
+  })
+
+  it('pins the thumb to the top at the maximum offset', () => {
+    const scrollbar = selectScrollbar(30, 10, 20)
+    expect(scrollbar.visible).toBe(true)
+    expect(scrollbar.thumbTop).toBe(0)
+  })
+
+  it('moves the thumb between the ends for a mid offset', () => {
+    const scrollbar = selectScrollbar(30, 10, 10)
+    expect(scrollbar.thumbTop).toBeGreaterThan(0)
+    expect(scrollbar.thumbTop + scrollbar.thumbHeight).toBeLessThan(10)
+  })
+
+  it('clamps an over-requested offset and never overflows the column', () => {
+    const scrollbar = selectScrollbar(30, 10, 999)
+    expect(scrollbar.thumbTop).toBe(0)
+    expect(scrollbar.thumbTop + scrollbar.thumbHeight).toBeLessThanOrEqual(10)
+  })
+
+  it('excludes the reserved bottom row from the thumb travel', () => {
+    const scrollbar = selectScrollbar(30, 10, 0, 1)
+    expect(scrollbar.contentHeight).toBe(9)
+    expect(scrollbar.thumbTop + scrollbar.thumbHeight).toBe(9)
+  })
+})
+
+describe('scrollOffsetForScrollbarRow', () => {
+  it('maps the top row to the OLDEST lines (maximum offset)', () => {
+    expect(scrollOffsetForScrollbarRow(5, 5, 10, 20)).toBe(20)
+  })
+
+  it('maps the bottom row to the newest lines (offset 0)', () => {
+    expect(scrollOffsetForScrollbarRow(14, 5, 10, 20)).toBe(0)
+  })
+
+  it('maps a mid row to a mid offset', () => {
+    const offset = scrollOffsetForScrollbarRow(7, 5, 10, 20)
+    expect(offset).toBeGreaterThan(0)
+    expect(offset).toBeLessThan(20)
+  })
+
+  it('clamps rows outside the column to its ends', () => {
+    expect(scrollOffsetForScrollbarRow(1, 5, 10, 20)).toBe(20)
+    expect(scrollOffsetForScrollbarRow(99, 5, 10, 20)).toBe(0)
   })
 })
 

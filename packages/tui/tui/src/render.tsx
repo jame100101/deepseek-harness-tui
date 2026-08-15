@@ -32,7 +32,8 @@ import type { PanelRow, SettingsPageId } from './settings-data'
 import type { TuiStore } from './store'
 import type { TuiNode } from './types'
 import {
-  nextCodePointBoundary, previousCodePointBoundary, selectComposerLayout, selectPanelViewport, selectTranscriptViewport,
+  nextCodePointBoundary, previousCodePointBoundary, scrollOffsetForScrollbarRow, selectComposerLayout, selectPanelViewport,
+  selectScrollbar, selectTranscriptViewport,
 } from './viewport'
 import type { TranscriptLine } from './viewport'
 
@@ -422,6 +423,8 @@ export interface TuiHost {
   unsetCredential(ref: string): Promise<void>
   /** Reload the live /jobs and /subagents panel rows (panel open / poll). */
   refreshPanels(): void
+  /** Reload the /settings page data (settings panel open). */
+  refreshSettings(): void
   /** Request one running job to stop. */
   killJob(id: string): void
   /** Create/replace/remove feedback for one assistant message (toggle on re-rate). */
@@ -723,7 +726,7 @@ function Header(props: {
   )
 }
 
-/** The transcript viewport with the floating back-to-bottom button. */
+/** The transcript viewport with the browser-style right-edge scrollbar column and the floating back-to-bottom button. */
 function Transcript(props: {
   lines: readonly TranscriptLine[]
   height: number
@@ -736,25 +739,31 @@ function Transcript(props: {
   backButton?: boolean
 }): React.ReactElement {
   const viewport = selectTranscriptViewport([...props.lines], props.height, props.offset, props.backButton === true ? 1 : 0)
+  const scrollbar = selectScrollbar(props.lines.length, props.height, viewport.offset, props.backButton === true ? 1 : 0)
   useEffect(() => {
     props.onMaximumOffsetChange?.(viewport.maximumOffset, props.lines.length)
   }, [props.onMaximumOffsetChange, viewport.maximumOffset, props.lines.length])
+  // The scrollbar lives in its OWN right-edge column (a browser-style strip,
+  // never characters appended to content rows): content and gutter render as
+  // sibling Boxes, so no line's text width can ever shift, wrap, or break the
+  // rail — the gutter stays a perfectly straight line on the last column, and
+  // the thumb sits at a stable, clickable position.
   return (
-    <Box
-      flexDirection="column"
-      flexGrow={1}
-      height={Math.max(1, props.height)}
-      overflow="hidden"
-      paddingX={1}
-      justifyContent="flex-end"
-    >
-      {viewport.lines.map((line, index) => (
-        // Index keys: scrolling reorders the visible rows every wheel tick,
-        // and keyed reordering through Ink's reconciler can accumulate stale
-        // rows — position-keyed rows never move, only their text changes.
-        <Text key={index} color={themed(line.color, props.theme, 'white')} bold={line.bold === true} dimColor={line.dim === true}>
-          {line.runs !== undefined && line.runs.length > 0
-            ? line.runs.map((run, runIndex) => (
+    <Box flexDirection="row" flexGrow={1} height={Math.max(1, props.height)} overflow="hidden">
+      <Box
+        flexDirection="column"
+        flexGrow={1}
+        overflow="hidden"
+        paddingX={1}
+        justifyContent="flex-end"
+      >
+        {viewport.lines.map((line, index) => (
+          // Index keys: scrolling reorders the visible rows every wheel tick,
+          // and keyed reordering through Ink's reconciler can accumulate stale
+          // rows — position-keyed rows never move, only their text changes.
+          <Text key={index} color={themed(line.color, props.theme, 'white')} bold={line.bold === true} dimColor={line.dim === true}>
+            {line.runs !== undefined && line.runs.length > 0
+              ? line.runs.map((run, runIndex) => (
                 <Text key={runIndex} bold={run.bold === true} underline={run.underline === true} dimColor={run.dim === true}
                   {...run.color !== undefined
                     ? { color: themed(run.color, props.theme, 'white') }
@@ -764,15 +773,28 @@ function Transcript(props: {
                   {run.text}
                 </Text>
               ))
-            : (line.text || ' ')}
-        </Text>
-      ))}
-      {props.backButton === true ? (
-        <Text key="back-button">
-          {' '.repeat(Math.max(0, Math.floor((Math.max(1, props.width - 2) - stringWidth(` ${COPY[props.locale].backToBottom} `)) / 2)))}
-          <Text bold inverse color={themed('cyan', props.theme, 'cyan')}>{` ${COPY[props.locale].backToBottom} `}</Text>
-        </Text>
-      ) : null}
+              : (line.text || ' ')}
+          </Text>
+        ))}
+        {props.backButton === true ? (
+          <Text key="back-button">
+            {' '.repeat(Math.max(0, Math.floor((Math.max(1, props.width - 3) - stringWidth(` ${COPY[props.locale].backToBottom} `)) / 2)))}
+            <Text bold inverse color={themed('cyan', props.theme, 'cyan')}>{` ${COPY[props.locale].backToBottom} `}</Text>
+          </Text>
+        ) : null}
+      </Box>
+      <Box flexDirection="column" width={1} overflow="hidden">
+        {scrollbar.visible
+          ? Array.from({ length: Math.max(1, props.height) }, (_, index) => {
+            const thumb = index >= scrollbar.thumbTop && index < scrollbar.thumbTop + scrollbar.thumbHeight
+            return (
+              <Text key={index} bold={thumb} dimColor={!thumb} {...(thumb ? { color: themed('cyan', props.theme, 'cyan') } : {})}>
+                {thumb ? '█' : '│'}
+              </Text>
+            )
+          })
+          : null}
+      </Box>
     </Box>
   )
 }
@@ -827,20 +849,20 @@ function CommandPaletteView(props: {
       {visibleItems.length === 0
         ? <Text dimColor>{copy.noMatch}</Text>
         : visibleItems.map((command, index) => {
-            const absoluteIndex = start + index
-            const label = `/${command.name}`
-            const description = fitDisplayText(sanitizeTerminalText(command.description), Math.max(1, contentWidth - stringWidth(label) - 4))
-            return (
-              <Text
-                key={command.name}
-                color={absoluteIndex === props.selectedIndex ? 'cyan' : 'white'}
-                bold={absoluteIndex === props.selectedIndex}
-                inverse={absoluteIndex === props.selectedIndex}
-              >
-                {fitDisplayText(`${absoluteIndex === props.selectedIndex ? '▸' : ' '} ${label}  ${description}`, contentWidth)}
-              </Text>
-            )
-          })}
+          const absoluteIndex = start + index
+          const label = `/${command.name}`
+          const description = fitDisplayText(sanitizeTerminalText(command.description), Math.max(1, contentWidth - stringWidth(label) - 4))
+          return (
+            <Text
+              key={command.name}
+              color={absoluteIndex === props.selectedIndex ? 'cyan' : 'white'}
+              bold={absoluteIndex === props.selectedIndex}
+              inverse={absoluteIndex === props.selectedIndex}
+            >
+              {fitDisplayText(`${absoluteIndex === props.selectedIndex ? '▸' : ' '} ${label}  ${description}`, contentWidth)}
+            </Text>
+          )
+        })}
       <Text dimColor wrap="truncate">{shorten(copy.paletteHint, contentWidth)}</Text>
     </Box>
   )
@@ -1010,14 +1032,14 @@ function ImeTextInput(props: {
       ) : null}
       {props.value === ''
         ? (props.focus
-            // Focused + empty keeps the row via a non-breaking space: the
-            // placeholder hides so the IME pre-edit popup never collides
-            // with it, and Ink drops whitespace-only Text content.
-            ? <Text wrap="truncate">{'\u00a0'}</Text>
-            : <Text dimColor wrap="truncate">{props.placeholder}</Text>)
+        // Focused + empty keeps the row via a non-breaking space: the
+        // placeholder hides so the IME pre-edit popup never collides
+        // with it, and Ink drops whitespace-only Text content.
+          ? <Text wrap="truncate">{'\u00a0'}</Text>
+          : <Text dimColor wrap="truncate">{props.placeholder}</Text>)
         : layout.visibleLines.map((line, index) => (
-            <Text key={index} wrap="truncate">{line === '' ? ' ' : line}</Text>
-          ))}
+          <Text key={index} wrap="truncate">{line === '' ? ' ' : line}</Text>
+        ))}
     </Box>
   )
 }
@@ -1059,20 +1081,20 @@ function Composer(props: {
           <Box flexGrow={1} flexDirection="column">
             {props.disabled
               ? (
-                  <DisabledComposerLines value={safeValue} placeholder={props.placeholder} width={inputWidth} />
-                )
+                <DisabledComposerLines value={safeValue} placeholder={props.placeholder} width={inputWidth} />
+              )
               : (
-                  <ImeTextInput
-                    value={safeValue}
-                    onChange={next => props.onDraftChange(sanitizeTerminalText(stripMouseReports(next)))}
-                    onSubmit={props.onSubmit}
-                    placeholder={props.placeholder}
-                    focus={props.focused}
-                    width={inputWidth}
-                    {...(props.reserveKeys !== undefined ? { reserveKeys: props.reserveKeys } : {})}
-                    {...(props.mask !== undefined ? { mask: props.mask } : {})}
-                  />
-                )}
+                <ImeTextInput
+                  value={safeValue}
+                  onChange={next => props.onDraftChange(sanitizeTerminalText(stripMouseReports(next)))}
+                  onSubmit={props.onSubmit}
+                  placeholder={props.placeholder}
+                  focus={props.focused}
+                  width={inputWidth}
+                  {...(props.reserveKeys !== undefined ? { reserveKeys: props.reserveKeys } : {})}
+                  {...(props.mask !== undefined ? { mask: props.mask } : {})}
+                />
+              )}
           </Box>
         </Box>
       </Box>
@@ -1195,7 +1217,9 @@ function Takeover(props: {
   locale: Locale
 }): React.ReactElement {
   const approval = props.snapshot.pendingApproval
-  const question = props.snapshot.pendingQuestion?.questions[Math.min(props.questionIndex, (props.snapshot.pendingQuestion?.questions.length ?? 1) - 1)]
+  const question = props.snapshot.pendingQuestion?.questions[
+    Math.min(props.questionIndex, (props.snapshot.pendingQuestion?.questions.length ?? 1) - 1)
+  ]
   const copy = COPY[props.locale]
   return (
     <Box flexDirection="column" paddingX={1} height={Math.max(1, props.height)} overflow="hidden">
@@ -1217,11 +1241,11 @@ function Takeover(props: {
           {question.detail !== undefined && <Text wrap="truncate" dimColor>{sanitizeTerminalText(question.detail)}</Text>}
           {(question.options ?? []).length > 0 && props.questionText === ''
             ? (question.options ?? []).map((option, index) => (
-                <Text wrap="truncate" key={option.label} bold={index === props.questionSel} {...index === props.questionSel ? { color: 'yellow' } : {}}>
-                  {index === props.questionSel ? '▸' : ' '} ○ {sanitizeTerminalText(option.label)}
-                  {option.description !== undefined ? ` · ${sanitizeTerminalText(option.description)}` : ''}
-                </Text>
-              ))
+              <Text wrap="truncate" key={option.label} bold={index === props.questionSel} {...index === props.questionSel ? { color: 'yellow' } : {}}>
+                {index === props.questionSel ? '▸' : ' '} ○ {sanitizeTerminalText(option.label)}
+                {option.description !== undefined ? ` · ${sanitizeTerminalText(option.description)}` : ''}
+              </Text>
+            ))
             : <Text wrap="truncate" color="cyan">› {props.questionText || copy.questionInput}</Text>}
           <Text wrap="truncate" dimColor>{copy.questionHint}</Text>
         </>
@@ -1253,6 +1277,11 @@ export function App(props: {
   // the next line, broken borders). The floors are sanity guards only.
   const width = Math.max(20, terminalSize.width)
   const rowCount = Math.max(6, terminalSize.height)
+  // The transcript reserves its LAST column for the right-edge scrollbar
+  // gutter (a browser-style strip rendered by its own Box), so every
+  // transcript line wraps at width - 3: one left-margin cell, width - 3
+  // content cells, one right-margin cell, then the gutter column.
+  const transcriptContentWidth = Math.max(1, width - 3)
 
   const [tick, setTick] = useState(0)
   const [draft, setDraft] = useState('')
@@ -1278,6 +1307,9 @@ export function App(props: {
   const [pluginEdit, setPluginEdit] = useState<{ ns: string; field: string; kind: 'string' | 'number' | 'secret' } | null>(null)
   const [pluginEditText, setPluginEditText] = useState('')
   const lastCtrlCAt = useRef(0)
+  // Whether a left-button press on the right-edge scrollbar column is being
+  // dragged; button-motion reports keep scrolling until the release.
+  const scrollbarDragRef = useRef(false)
   // Shell-style input history (cmd/PowerShell ↑/↓ recall), in-memory only.
   const historyRef = useRef<string[]>([])
   const historyScratchRef = useRef('')
@@ -1388,7 +1420,10 @@ export function App(props: {
     : sanitizeTerminalText(composerDraft)
   const composerLines = Math.min(
     MAX_COMPOSER_LINES,
-    Math.max(1, selectComposerLayout(composerDisplay, composerDisplay.length, Math.max(1, width - 4), MAX_COMPOSER_LINES).visibleLines.length),
+    Math.max(
+      1,
+      selectComposerLayout(composerDisplay, composerDisplay.length, Math.max(1, width - 4), MAX_COMPOSER_LINES).visibleLines.length,
+    ),
   )
   // The frame must ALWAYS fill the physical rows exactly: the cursor suffix
   // compensation assumes the write ends on the last terminal row, so any
@@ -1408,7 +1443,9 @@ export function App(props: {
       return snapshot.trace
         .slice(Math.max(0, snapshot.trace.length - 3000))
         .map((entry, index) => {
-          const text = `· ${sanitizeTerminalText(entry.text)}`
+          // One flat row per trace entry, truncated to the content width so a
+          // long entry can never wrap and shift the rows below it.
+          const text = fitDisplayText(`· ${sanitizeTerminalText(entry.text)}`, transcriptContentWidth)
           // Structured-trajectory palette: model turns blue, tool activity red,
           // user input cyan, structural boundaries dim.
           const color = traceLineColor(text)
@@ -1425,7 +1462,7 @@ export function App(props: {
       // First load of a NEW session only: the whale banner. Any event
       // (user message, resume replay, …) fills `nodes`, so the banner can
       // never reappear later in the session.
-      const banner = welcomeBanner(width - 2, transcriptHeight)
+      const banner = welcomeBanner(transcriptContentWidth, transcriptHeight)
       if (banner.length > 0) {
         banner.forEach((entry, index) => {
           lines.push({
@@ -1437,17 +1474,22 @@ export function App(props: {
         })
       } else {
         // Too narrow/short for the art: the plain adaptive welcome card.
-        welcomeBlock(width - 2, snapshot.model, snapshot.cwd, snapshot.sessionId, locale).forEach((line, index) => {
+        welcomeBlock(transcriptContentWidth, snapshot.model, snapshot.cwd, snapshot.sessionId, locale).forEach((line, index) => {
           const chrome = line.startsWith('┏') || line.startsWith('┃') || line.startsWith('┗')
           lines.push({ key: `welcome-${index}`, text: line, ...(chrome ? { color: 'yellow' } : { dim: true }) })
         })
       }
     }
     for (const node of nodes) {
-      lines.push(...nodeLines(node, width - 2, expandedOf(node), node.id === selectedId, retryShimmer, snapshot.feedback, locale))
+      lines.push(...nodeLines(
+        node, transcriptContentWidth, expandedOf(node), node.id === selectedId, retryShimmer, snapshot.feedback, locale,
+      ))
     }
     return lines
-  }, [viewMode, snapshot.nodes, snapshot.trace, snapshot.model, snapshot.cwd, snapshot.sessionId, width, transcriptHeight, expanded, thinkCollapsed, thinkDefaultOpen, selectedId, retryShimmer, snapshot.feedback, locale])
+  }, [
+    viewMode, snapshot.nodes, snapshot.trace, snapshot.model, snapshot.cwd, snapshot.sessionId, width, transcriptHeight,
+    expanded, thinkCollapsed, thinkDefaultOpen, selectedId, retryShimmer, snapshot.feedback, locale,
+  ])
   const liveThinkLines = useMemo((): TranscriptLine[] => {
     if (snapshot.live === null || !snapshot.busy || snapshot.live.think === '') return []
     // Claude Code style: the original spinning glyph stays up front, and the
@@ -1472,7 +1514,7 @@ export function App(props: {
     if (tail !== '') {
       // Bound the preview to one row: a longer tail would wrap onto the next
       // line without its `│` prefix and overwrite the row below.
-      const tailSpace = Math.max(8, width - 5)
+      const tailSpace = Math.max(8, transcriptContentWidth - 3)
       const content = stringWidth(tail) <= tailSpace ? tail : `…${tail.slice(-(tailSpace - 1))}`
       lines.push({
         key: 'live-think-tail',
@@ -1484,7 +1526,7 @@ export function App(props: {
   }, [snapshot.live, snapshot.busy, width, tick])
   const liveTextLines = useMemo((): TranscriptLine[] => {
     if (snapshot.live === null || !snapshot.busy || snapshot.live.text === '') return []
-    return wrapText(`● ${snapshot.live.text}▌`, width - 2).map((text, index) => ({
+    return wrapText(`● ${snapshot.live.text}▌`, transcriptContentWidth).map((text, index) => ({
       key: `live-text-${index}`, text,
     }))
   }, [snapshot.live?.text, snapshot.busy, width])
@@ -1504,21 +1546,24 @@ export function App(props: {
     })
   }
   if (notice !== '') {
-    wrapText(notice, width - 2).forEach((line, index) => {
+    wrapText(notice, transcriptContentWidth).forEach((line, index) => {
       allLines.push({ key: `notice-${index}`, text: line, color: 'gray' })
     })
   }
   // dsh docks render at the transcript tail so follow mode keeps them
-  // visible right above the composer.
+  // visible right above the composer. Each dock is ONE transcript row and
+  // must never exceed the content width: an overlong row would wrap onto
+  // the next line and shift every row below it (breaking the frame and the
+  // right-edge scrollbar alignment), so docks truncate with an ellipsis.
   if (snapshot.queued.length > 0) {
     const preview = snapshot.queued.map(entry => `${entry.steer ? '▸▸ ' : ''}${sanitizeTerminalText(entry.text)}`).join(' · ')
-    allLines.push({ key: 'queue-dock', text: `${copy.queueDock} ${snapshot.queued.length}：${preview}`, color: 'yellow' })
+    allLines.push({ key: 'queue-dock', text: fitDisplayText(`${copy.queueDock} ${snapshot.queued.length}：${preview}`, transcriptContentWidth), color: 'yellow' })
   }
   if (snapshot.todos.length > 0) {
     const pending = snapshot.todos.filter(todo => todo.status === 'pending').length
     const active = snapshot.todos.filter(todo => todo.status === 'in_progress').length
     const done = snapshot.todos.filter(todo => todo.status === 'completed').length
-    allLines.push({ key: 'todo-dock', text: `${copy.todoDock} ${copy.todoCounts(active, pending, done)}`, color: 'yellow' })
+    allLines.push({ key: 'todo-dock', text: fitDisplayText(`${copy.todoDock} ${copy.todoCounts(active, pending, done)}`, transcriptContentWidth), color: 'yellow' })
   }
   // The goal dock mirrors the Web goal panel in one transcript-tail row.
   if (snapshot.goal !== null) {
@@ -1529,13 +1574,13 @@ export function App(props: {
     const objective = snapshot.goal.objective.length <= 80 ? snapshot.goal.objective : `${snapshot.goal.objective.slice(0, 80)}…`
     allLines.push({
       key: 'goal-dock',
-      text: `${copy.goalDock} [${phaseLabel}] · round ${snapshot.goal.roundsStarted}/${snapshot.goal.maxGoalRounds} · ${objective}`,
+      text: fitDisplayText(`${copy.goalDock} [${phaseLabel}] · round ${snapshot.goal.roundsStarted}/${snapshot.goal.maxGoalRounds} · ${objective}`, transcriptContentWidth),
       color: 'yellow',
     })
   }
   // Pending image attachments ride the next user message (Web composer chips).
   if (snapshot.attachmentCount > 0) {
-    allLines.push({ key: 'attach-dock', text: copy.attachCount(snapshot.attachmentCount), color: 'yellow' })
+    allLines.push({ key: 'attach-dock', text: fitDisplayText(copy.attachCount(snapshot.attachmentCount), transcriptContentWidth), color: 'yellow' })
   }
 
   // The view stays on the same CONTENT while new lines stream in at the
@@ -1546,7 +1591,7 @@ export function App(props: {
     transcriptMaximumOffset.current = maximumOffset
     const grew = Math.max(0, lineCount - transcriptLineCountRef.current)
     transcriptLineCountRef.current = lineCount
-    setTranscriptScrollOffset(current => {
+    setTranscriptScrollOffset((current) => {
       if (current === 0) return 0
       return Math.min(maximumOffset, Math.max(0, current + grew))
     })
@@ -1566,7 +1611,7 @@ export function App(props: {
       case 'plugin-config': return buildPluginConfigRows(snapshot.settings?.configs[panel.filter ?? ''] ?? [], panel.filter ?? '', locale)
     }
   }, [snapshot, panel, locale])
-  const settingsViewport = selectPanelViewport(settingsRows.map((row) => ({
+  const settingsViewport = selectPanelViewport(settingsRows.map(row => ({
     key: row.key,
     text: row.text,
     ...(row.color !== undefined ? { color: row.color } : {}),
@@ -1591,7 +1636,14 @@ export function App(props: {
     setDraft('')
     setPaletteDismissedInput(null)
     setNotice('')
-    if (kind !== 'settings') props.host.refreshPanels()
+    if (kind === 'settings') {
+      // The plugins page reflects the loader tree, which hot-applies patches
+      // asynchronously: refresh on open so a slow toggle never leaves a
+      // stale ●/○ row visible after re-entering the panel.
+      props.host.refreshSettings()
+    } else {
+      props.host.refreshPanels()
+    }
   }, [props.host])
 
   const executeCommand = useCallback((raw: string): void => {
@@ -1942,7 +1994,7 @@ export function App(props: {
 
   /** Keep the selected panel row inside the visible window (scroll-follow). */
   const ensurePanelSelectionVisible = useCallback((selected: number): void => {
-    setSettingsTop(current => {
+    setSettingsTop((current) => {
       if (selected < current) return selected
       if (selected >= current + panelHeight) return selected - panelHeight + 1
       return current
@@ -2018,7 +2070,10 @@ export function App(props: {
       return true
     }
     return false
-  }, [pluginEdit, commitPluginEdit, settingsConfirm, settingsEdit, commitCredentialEdit, panel, settingsPage, settingsRows, settingsSel, settingsSelClamped, settingsViewport.maximumOffset, pageSize, activateSettingsRow, ensurePanelSelectionVisible, openPanel])
+  }, [
+    pluginEdit, commitPluginEdit, settingsConfirm, settingsEdit, commitCredentialEdit, panel, settingsPage, settingsRows, settingsSel,
+    settingsSelClamped, settingsViewport.maximumOffset, pageSize, activateSettingsRow, ensurePanelSelectionVisible, openPanel,
+  ])
 
   // ── input routing ─────────────────────────────────────────────────────
   // Every Escape action funnels through here so the 60ms phantom-Escape
@@ -2140,12 +2195,45 @@ export function App(props: {
       return
     }
     // A mouse CLICK on the floating back-to-bottom button returns to the
-    // newest lines; every other click is consumed without effect.
+    // newest lines; a press on the right-edge scrollbar gutter jumps the
+    // transcript to that position and starts a drag (button-motion reports
+    // continue it until release). Every other click is consumed without
+    // effect. The transcript occupies 1-based rows 5..4+height; the gutter
+    // accepts the LAST TWO columns (the rail column plus the content's right
+    // margin cell) so the click target is a comfortable 2 cells wide.
     const click = parseMouseReport(input)
-    if (click !== null && (click.button & 64) === 0 && (click.button & 32) === 0) {
-      if (click.action === 'press' && !panelOpen && transcriptScrollOffset > 0 && click.row === 4 + transcriptHeight) {
-        setTranscriptScrollOffset(0)
+    if (click !== null && (click.button & 64) === 0) {
+      if ((click.button & 32) !== 0) {
+        // Drag motion: follow the pointer along the scrollbar gutter.
+        if (scrollbarDragRef.current && !panelOpen) {
+          const backButtonVisible = transcriptScrollOffset > 0
+          const contentHeight = transcriptHeight - (backButtonVisible ? 1 : 0)
+          const maximum = transcriptMaximumOffset.current
+          const geometry = selectScrollbar(allLines.length, transcriptHeight, transcriptScrollOffset, backButtonVisible ? 1 : 0)
+          if (geometry.visible && click.row >= 5 && click.row <= 4 + contentHeight) {
+            setTranscriptScrollOffset(scrollOffsetForScrollbarRow(click.row, 5, contentHeight, maximum))
+          }
+        }
+        return
       }
+      if (click.action === 'press' && !panelOpen) {
+        if (transcriptScrollOffset > 0 && click.row === 4 + transcriptHeight) {
+          setTranscriptScrollOffset(0)
+          return
+        }
+        if (click.button === 0 && click.column >= width - 1) {
+          const backButtonVisible = transcriptScrollOffset > 0
+          const contentHeight = transcriptHeight - (backButtonVisible ? 1 : 0)
+          const maximum = transcriptMaximumOffset.current
+          const geometry = selectScrollbar(allLines.length, transcriptHeight, transcriptScrollOffset, backButtonVisible ? 1 : 0)
+          if (geometry.visible && click.row >= 5 && click.row <= 4 + contentHeight) {
+            scrollbarDragRef.current = true
+            setTranscriptScrollOffset(scrollOffsetForScrollbarRow(click.row, 5, contentHeight, maximum))
+          }
+          return
+        }
+      }
+      if (click.action === 'release') scrollbarDragRef.current = false
       return
     }
     if (panelOpen) {
@@ -2153,14 +2241,14 @@ export function App(props: {
       return
     }
     if (key.pageUp || (key.ctrl && key.home)) {
-      setTranscriptScrollOffset(current => {
+      setTranscriptScrollOffset((current) => {
         const maximum = transcriptMaximumOffset.current
         return key.home ? maximum : Math.min(maximum, current + pageSize)
       })
       return
     }
     if (key.pageDown || (key.end && (key.ctrl || transcriptScrollOffset > 0))) {
-      setTranscriptScrollOffset(current => {
+      setTranscriptScrollOffset((current) => {
         const clamped = Math.min(current, transcriptMaximumOffset.current)
         return key.end ? 0 : Math.max(0, clamped - pageSize)
       })
@@ -2208,7 +2296,7 @@ export function App(props: {
     }
     if (palette !== null && palette.length > 0) {
       if (key.upArrow || key.downArrow) {
-        setPaletteSelectedIndex(current => {
+        setPaletteSelectedIndex((current) => {
           const count = palette.length
           return key.upArrow ? (current - 1 + count) % count : (current + 1) % count
         })
@@ -2257,7 +2345,8 @@ export function App(props: {
         const visibleNodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 3000))
         const currentIndex = visibleNodes.findIndex(node => node.id === selectedId)
         if (visibleNodes.length > 0) {
-          setSelectedId(visibleNodes[Math.min(visibleNodes.length - 1, currentIndex + 1)]?.id ?? visibleNodes[visibleNodes.length - 1]?.id ?? null)
+          const nextNode = visibleNodes[Math.min(visibleNodes.length - 1, currentIndex + 1)] ?? visibleNodes[visibleNodes.length - 1]
+          setSelectedId(nextNode?.id ?? null)
         }
         return
       }
@@ -2283,14 +2372,14 @@ export function App(props: {
         if (node?.kind === 'think') {
           const open = expanded.has(node.id) || (thinkDefaultOpen && !thinkCollapsed.has(node.id))
           if (open) {
-            setExpanded(previous => { const next = new Set(previous); next.delete(node.id); return next })
-            setThinkCollapsed(previous => { const next = new Set(previous); next.add(node.id); return next })
+            setExpanded((previous) => { const next = new Set(previous); next.delete(node.id); return next })
+            setThinkCollapsed((previous) => { const next = new Set(previous); next.add(node.id); return next })
           } else {
-            setExpanded(previous => { const next = new Set(previous); next.add(node.id); return next })
-            setThinkCollapsed(previous => { const next = new Set(previous); next.delete(node.id); return next })
+            setExpanded((previous) => { const next = new Set(previous); next.add(node.id); return next })
+            setThinkCollapsed((previous) => { const next = new Set(previous); next.delete(node.id); return next })
           }
         } else if (node !== undefined && isCollapsible(node)) {
-          setExpanded(previous => {
+          setExpanded((previous) => {
             const next = new Set(previous)
             if (next.has(selectedId)) next.delete(selectedId)
             else next.add(selectedId)
@@ -2371,7 +2460,13 @@ export function App(props: {
         <Text dimColor>{fitDisplayText(notice.split('\n')[0] ?? '', Math.max(1, width - 2))}</Text>
       ) : null}
       {palette !== null && !panelOpen ? (
-        <CommandPaletteView matches={palette} selectedIndex={paletteSelectedIndex} width={width - 2} height={Math.max(1, paletteH)} locale={locale} />
+        <CommandPaletteView
+          matches={palette}
+          selectedIndex={paletteSelectedIndex}
+          width={width - 2}
+          height={Math.max(1, paletteH)}
+          locale={locale}
+        />
       ) : null}
       {takeoverH > 0 ? (
         <Takeover
@@ -2393,15 +2488,17 @@ export function App(props: {
           : settingsEdit !== null
             ? setSettingsEditText
             : (value: string) => {
-                // Every keystroke clears a stale picker dismissal so the
-                // palette can never stay suppressed after an Escape, and
-                // edits a recalled history line (leaving history browsing).
-                setPaletteDismissedInput(null)
-                if (historyIndex !== -1) setHistoryIndex(-1)
-                setDraft(value)
-              }}
+              // Every keystroke clears a stale picker dismissal so the
+              // palette can never stay suppressed after an Escape, and
+              // edits a recalled history line (leaving history browsing).
+              setPaletteDismissedInput(null)
+              if (historyIndex !== -1) setHistoryIndex(-1)
+              setDraft(value)
+            }}
         onSubmit={submitComposer}
-        disabled={pluginEdit !== null || settingsEdit !== null ? false : (pendingApproval !== null || pendingQuestion !== null || panelOpen)}
+        disabled={pluginEdit !== null || settingsEdit !== null
+          ? false
+          : (pendingApproval !== null || pendingQuestion !== null || panelOpen)}
         focused={composerFocused}
         width={width}
         placeholder={pluginEdit !== null
@@ -2411,7 +2508,15 @@ export function App(props: {
         theme={theme}
         {...(pluginEdit?.kind === 'secret' ? { mask: '•' } : {})}
       />
-      <StatusBar snapshot={snapshot} width={width} panelOpen={panelOpen} scrollOffset={transcriptScrollOffset} selectionHint={selectionHint} locale={locale} theme={theme} />
+      <StatusBar
+        snapshot={snapshot}
+        width={width}
+        panelOpen={panelOpen}
+        scrollOffset={transcriptScrollOffset}
+        selectionHint={selectionHint}
+        locale={locale}
+        theme={theme}
+      />
     </Box>
   )
 }

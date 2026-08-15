@@ -1,15 +1,20 @@
 /**
  * Mouse-input helpers, ported from the DamnatioX TypeScript TUI: Ink 7
  * delivers raw SGR mouse reports through `useInput` as input strings, so the
- * surface enables wheel tracking itself, parses wheel reports from input,
- * and strips stray reports from typed/pasted text.
+ * surface enables wheel + button-motion tracking itself, parses wheel and
+ * drag reports from input, and strips stray reports from typed/pasted text.
  * @module @deepseek-ai/dsh-tui/src/mouse
  */
 
-/** Enable basic (X10) + SGR (1006) mouse tracking. */
-export const ENABLE_WHEEL_MOUSE = '\x1b[?1000h\x1b[?1006h'
+/**
+ * Enable basic (X10) + button-motion (1002) + SGR (1006) mouse tracking.
+ * The motion mode streams drag reports while a button stays pressed, which
+ * the right-edge scrollbar consumes as drag-to-scroll; terminals without
+ * 1002 support ignore the mode and the scrollbar still jumps on plain clicks.
+ */
+export const ENABLE_WHEEL_MOUSE = '\x1b[?1000h\x1b[?1002h\x1b[?1006h'
 /** Disable mouse tracking again (exit path). */
-export const DISABLE_WHEEL_MOUSE = '\x1b[?1006l\x1b[?1000l'
+export const DISABLE_WHEEL_MOUSE = '\x1b[?1006l\x1b[?1002l\x1b[?1000l'
 /** Lines one wheel tick scrolls the transcript by. */
 export const MOUSE_WHEEL_LINES = 3
 

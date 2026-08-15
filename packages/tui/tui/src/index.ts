@@ -72,7 +72,7 @@ import type { FoldScratch } from './fold'
 import type { FoldState } from './types'
 import { renderNodePlain } from './plain'
 import { disableEntryText, enableEntryText } from './patch-toggle'
-import { collectCredentialRefs, collectPluginFields, groupProviders } from './settings-data'
+import { collectCredentialRefs, collectPluginFields, groupProviders, sessionTitlesById } from './settings-data'
 import { createTuiStore } from './store'
 import type {
   CredentialRow, GeneralSettings, JobRow, ModelEntry, PendingApproval, PendingQuestion, SessionEntry, SettingsData,
@@ -120,6 +120,11 @@ const IMAGE_MEDIA_BY_EXT: Record<string, ImageMediaType> = {
   gif: 'image/gif',
   webp: 'image/webp',
 }
+
+/** Poll interval (ms) while waiting for one plugin toggle's hot-apply. */
+const TOGGLE_SETTLE_INTERVAL_MS = 400
+/** Poll attempt cap: heavy adapters hot-apply slowly (resource disposal). */
+const TOGGLE_SETTLE_MAX_ATTEMPTS = 150
 
 /** Process-facing facts the surface owns across publishes. */
 interface Surface {
@@ -205,21 +210,22 @@ async function loadSessionRows(ctx: Context, liveRows: readonly SessionEntry[]):
   try {
     const records = await query.listSessions()
     const newest = records.slice(0, 50)
-    const titles = await query.readTitleSnapshots(newest.map(record => record.header.id))
-    // Live sessions also carry their first-prompt title snapshot once the
-    // title provider has generated one.
+    // Titles fold once for every requested session. The live rows are usually
+    // already among `newest`, and the corpus filter below drops live ids from
+    // `newest` afterwards — so titles must be keyed BY SESSION ID, never read
+    // by position: index-aligned lookups shifted by one for every corpus row
+    // after a live record (the first-open bug where Enter resumed the NEXT
+    // session below the selected one).
     const liveIds = liveRows.map(row => SessionId(row.id))
-    const liveTitles = await query.readTitleSnapshots(liveIds)
-    const live = liveRows.map((row, index) => {
-      const result = liveTitles[index]
-      const title = result?.status === 'fulfilled' ? result.value.title?.title : undefined
-      return title === undefined || title === '' ? row : { ...row, title }
+    const titles = sessionTitlesById(await query.readTitleSnapshots([...newest.map(record => record.header.id), ...liveIds]))
+    const live = liveRows.map((row) => {
+      const title = titles.get(row.id)
+      return title === undefined ? row : { ...row, title }
     })
     const corpus: SessionEntry[] = newest
       .filter(record => !liveIds.includes(record.header.id))
-      .map((record, index) => {
-        const titleResult = titles[index]
-        const title = titleResult?.status === 'fulfilled' ? titleResult.value.title?.title : undefined
+      .map((record) => {
+        const title = titles.get(record.header.id)
         return {
           id: record.header.id,
           model: '',
@@ -337,7 +343,7 @@ async function loadSettingsData(ctx: Context, surface: Surface, tuiScope: Settin
       // Groups and tree roots are not toggleable plugins: skip them so the
       // switch never targets the include row itself.
       .filter(entry => entry.options.group !== true && entry.id !== entry.options.id)
-      .map(entry => {
+      .map((entry) => {
         const descriptor = descriptors.find(candidate => candidate.ns === entry.options.id)
         return {
           // The BARE id is what the profile patch layer targets; the runtime
@@ -349,7 +355,9 @@ async function loadSettingsData(ctx: Context, surface: Surface, tuiScope: Settin
           ...(descriptor === undefined ? {} : { namespace: descriptor.ns }),
         }
       }),
-    configs: Object.fromEntries(descriptors.map(descriptor => [descriptor.ns, collectPluginFields(descriptor.schema, descriptor.value, general.locale)])),
+    configs: Object.fromEntries(
+      descriptors.map(descriptor => [descriptor.ns, collectPluginFields(descriptor.schema, descriptor.value, general.locale)]),
+    ),
     inventory: {
       namespaces: descriptors.map(descriptor => ({
         ns: descriptor.ns,
@@ -399,12 +407,12 @@ async function subagentRows(ctx: Context, rootSessionId: SessionId): Promise<Sub
     const entries = await subagents.listDescendants(rootSessionId)
     return entries.map((entry): SubagentRow => entry.kind === 'child'
       ? {
-          id: entry.id,
-          label: entry.mode === 'continuable' ? entry.label : (entry.label ?? entry.id),
-          mode: entry.mode,
-          activity: entry.activity,
-          depth: entry.depth,
-        }
+        id: entry.id,
+        label: entry.mode === 'continuable' ? entry.label : (entry.label ?? entry.id),
+        mode: entry.mode,
+        activity: entry.activity,
+        depth: entry.depth,
+      }
       : { id: entry.id, label: entry.reason, mode: 'diagnostic', activity: 'diagnostic', depth: entry.depth })
   } catch {
     // A listing racing teardown must not blank the panel.
@@ -488,9 +496,9 @@ function subscribe(
   const offOccupancy = projections === undefined
     ? (): void => {}
     : projections.onChanged((session, key) => {
-        if (key !== 'contextPressure' || session !== surface.agent.session) return
-        publish()
-      })
+      if (key !== 'contextPressure' || session !== surface.agent.session) return
+      publish()
+    })
   const offSettings = ctx.on('settings/updated', refreshSettings)
   const offCredentials = ctx.on('credentials/updated', refreshSettings)
   // Workflow runs are event-driven: each event folds its facts onto one row.
@@ -573,8 +581,8 @@ function mountAnswerers(ctx: Context, store: TuiStore, surface: Surface): void {
   const questions = ctx.get('userQuestions')
   if (questions !== undefined) {
     ctx.effect(() => questions.registerProvider({
-      ask: (request) => new Promise((resolve) => {
-        surface.questionResolve = (answers) => resolve({ answers })
+      ask: request => new Promise((resolve) => {
+        surface.questionResolve = answers => resolve({ answers })
         surface.pendingQuestion = {
           questions: request.questions.map(question => ({
             id: question.id,
@@ -632,7 +640,10 @@ async function loadModels(ctx: Context, current: { provider: string; model: stri
 }
 
 /** Create one agent over the current default-model selection. */
-async function createAgent(ctx: Context, cwd: string): Promise<{ agent: Agent; handle: AgentHandle; selection: ModelSelection; ref: ModelSelectionRef }> {
+async function createAgent(
+  ctx: Context,
+  cwd: string,
+): Promise<{ agent: Agent; handle: AgentHandle; selection: ModelSelection; ref: ModelSelectionRef }> {
   const selection = ctx.agentDefaultModel.currentSelection()
   const ref: ModelSelectionRef = { current: selection, assembled: undefined }
   const handle = await ctx.agents.create({
@@ -800,6 +811,37 @@ async function boot(
     }).catch(() => {
       // A refresh racing service teardown must not disturb the exit path.
     })
+  }
+  /**
+   * Poll the loader tree until one plugin entry's disabled state settles on
+   * the toggle's target, then republish the settings pages so the row's
+   * ●/○ and dim/bright flip. The profile patch is hot-applied through the
+   * launcher's HMR watch, whose latency varies widely (heavy adapters
+   * dispose/load slowly), so fixed one-shot refresh delays can all fire
+   * before the tree reflects the write. Each poll only CHECKS the entry —
+   * the store republishes exactly once, when the flip is observed.
+   * @param id - the bare loader entry id that was toggled.
+   * @param enabling - whether the toggle enables (target `disabled === false`).
+   */
+  const watchToggleSettle = (id: string, enabling: boolean): void => {
+    const check = (attempt: number): void => {
+      try {
+        const entry = [...ctx.loader.entries()].find(candidate => candidate.options.id === id)
+        if (entry !== undefined && entry.disabled === !enabling) {
+          refreshSettings()
+          // The row's loaded flag (fiber presence) can trail the disabled flag
+          // by one start/stop round; one trailing refresh catches it.
+          setTimeout(() => { refreshSettings() }, 800)
+          return
+        }
+      } catch {
+        // A tree update in flight can make the entry scan throw; the next
+        // poll retries, and the attempt cap bounds the wait either way.
+      }
+      if (attempt >= TOGGLE_SETTLE_MAX_ATTEMPTS) return
+      setTimeout(() => { check(attempt + 1) }, TOGGLE_SETTLE_INTERVAL_MS)
+    }
+    check(0)
   }
   let unsubscribe = subscribe(ctx, store, surface, refreshSettings)
   const isTty = process.stdin.isTTY === true && process.stdout.isTTY === true
@@ -1053,12 +1095,12 @@ async function boot(
             const next = enabling ? enableEntryText(content, id) : disableEntryText(content, id)
             if (next === content) return { enabled: !enabling }
             writeFileSync(patchPath, next, 'utf8')
-            // The HMR watcher re-applies the layer asynchronously; refresh the
-            // plugins page once the reload has settled (plus a slow-loader
-            // safety net) so the ●/○ dot flips live.
-            setTimeout(() => { refreshSettings() }, 600)
-            setTimeout(() => { refreshSettings() }, 1500)
-            setTimeout(() => { refreshSettings() }, 4000)
+            // The HMR watcher re-applies the layer asynchronously; poll until
+            // the loader tree reflects the toggle, then republish the plugins
+            // page so the ●/○ dot and dim/bright flip live. Fixed one-shot
+            // delays can all land before a slow hot-apply (heavy adapters),
+            // which left the row stale indefinitely.
+            watchToggleSettle(id, enabling)
             return { enabled: enabling }
           } catch (error) {
             return { error: `切换失败：${error instanceof Error ? error.message : String(error)}` }
@@ -1091,6 +1133,7 @@ async function boot(
         },
         setCredential: (ref, value) => ctx.credentials.set(credentialRef(ref), value),
         unsetCredential: ref => ctx.credentials.unset(credentialRef(ref)),
+        refreshSettings: refreshSettings,
         refreshPanels: () => {
           surface.jobs = jobsRows(ctx, Date.now())
           surface.version += 1

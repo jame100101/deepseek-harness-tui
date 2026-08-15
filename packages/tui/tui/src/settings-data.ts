@@ -181,6 +181,38 @@ export function buildSettingsRows(
 }
 
 /**
+ * One session-title observation result as returned by session-query
+ * (`readTitleSnapshots`): a fulfilled value carries the folded title, and
+ * every result names the session it folded. Declared structurally so this
+ * zero-Cordis module stays decoupled from the query service.
+ */
+export interface TitleObservationResult {
+  sessionId: string
+  status: 'fulfilled' | 'rejected'
+  value?: { title?: { title?: string } }
+}
+
+/**
+ * Key session-title observations by session id. The query returns one result
+ * per requested id in input order, but the caller then filters a SUBSET of
+ * the requested sessions (live ids are dropped from the corpus rows), so
+ * index-aligned lookups shift by one for every row after a live session —
+ * each row showed the NEXT record's title and Enter resumed the session one
+ * below the row the user picked. Id-keyed lookups are immune to filtering.
+ * @param results - the title observations to index.
+ * @returns fulfilled non-empty titles keyed by session id.
+ */
+export function sessionTitlesById(results: readonly TitleObservationResult[]): Map<string, string> {
+  const titles = new Map<string, string>()
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue
+    const title = result.value?.title?.title
+    if (title !== undefined && title !== '') titles.set(result.sessionId, title)
+  }
+  return titles
+}
+
+/**
  * One job row; elapsedMs is live for running jobs, final duration otherwise.
  * @param jobs - the job rows to project.
  * @param locale - the surface language; `en` renders English copy, `zh` Chinese.

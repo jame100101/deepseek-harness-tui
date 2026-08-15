@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildJobsRows, buildPluginConfigRows, buildSessionRows, buildSettingsRows, buildSubagentRows, buildWorkflowRows,
-  collectCredentialRefs, collectPluginFields, groupProviders,
+  collectCredentialRefs, collectPluginFields, groupProviders, sessionTitlesById,
 } from '../src/settings-data'
 import type { SettingsData } from '../src/store'
 
@@ -318,5 +318,51 @@ describe('en locale', () => {
     }
     expect(collectPluginFields(schema, { apiKey: '[redacted]' }, 'en')[0]?.display).toBe('••• set')
     expect(collectPluginFields(schema, { apiKey: '[redacted]' }, 'zh')[0]?.display).toBe('••• 已设置')
+  })
+})
+
+describe('sessionTitlesById', () => {
+  it('keys fulfilled non-empty titles by session id', () => {
+    const titles = sessionTitlesById([
+      { sessionId: 's-1', status: 'fulfilled', value: { title: { title: '修好测试' } } },
+      { sessionId: 's-2', status: 'fulfilled', value: { title: { title: '重构计划' } } },
+    ])
+    expect(titles.get('s-1')).toBe('修好测试')
+    expect(titles.get('s-2')).toBe('重构计划')
+  })
+
+  it('skips rejected observations and missing or empty titles', () => {
+    const titles = sessionTitlesById([
+      { sessionId: 's-1', status: 'rejected' },
+      { sessionId: 's-2', status: 'fulfilled', value: {} },
+      { sessionId: 's-3', status: 'fulfilled', value: { title: { title: '' } } },
+      { sessionId: 's-4', status: 'fulfilled', value: { title: { title: '  有标题  ' } } },
+    ])
+    expect(titles.size).toBe(1)
+    expect(titles.get('s-4')).toBe('  有标题  ')
+  })
+
+  it('survives the corpus filter that dropped a live session from the requested list (the first-open off-by-one)', () => {
+    // loadSessionRows requests titles for [live, r1, r2] in listSessions
+    // order, then filters the LIVE id out of the corpus rows. The old
+    // index-aligned lookup gave r1 the live title, r2 the r1 title, … — so
+    // the row the user picked (by its displayed title) resumed the session
+    // ONE BELOW it. Id-keyed lookups give every row its own title.
+    const observations = [
+      { sessionId: 'session-live0001', status: 'fulfilled' as const, value: { title: { title: '当前会话' } } },
+      { sessionId: 'session-old0001', status: 'fulfilled' as const, value: { title: { title: '修好测试' } } },
+      { sessionId: 'session-old0002', status: 'fulfilled' as const, value: { title: { title: '重构计划' } } },
+    ]
+    const titles = sessionTitlesById(observations)
+    const liveIds = new Set(['session-live0001'])
+    const corpusIds = ['session-old0001', 'session-old0002']
+    const rows = corpusIds.map(id => ({ id, title: titles.get(id) }))
+    // Each row carries its own title — the display and the resumed session
+    // always agree, no matter which requested ids the caller later drops.
+    expect(rows).toEqual([
+      { id: 'session-old0001', title: '修好测试' },
+      { id: 'session-old0002', title: '重构计划' },
+    ])
+    expect([...liveIds].every(id => titles.get(id) !== undefined)).toBe(true)
   })
 })

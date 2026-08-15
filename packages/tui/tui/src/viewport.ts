@@ -219,6 +219,75 @@ export function selectPanelViewport(
   }
 }
 
+/** The right-edge scrollbar column for the transcript viewport. */
+export interface ScrollbarState {
+  /** Whether the transcript overflows the viewport (the column is drawn). */
+  visible: boolean
+  /** 0-based first content row the thumb occupies. */
+  thumbTop: number
+  /** Content rows the thumb occupies (at least one when visible). */
+  thumbHeight: number
+  /** Rows the column spans (the viewport minus reserved bottom rows). */
+  contentHeight: number
+}
+
+/**
+ * Compute the right-edge scrollbar column for the transcript viewport. The
+ * thumb mirrors the scroll offset: offset 0 (follow mode, newest lines) pins
+ * it to the BOTTOM, the maximum offset (oldest lines) pins it to the top.
+ * The bottom-reserved row (the floating back-to-bottom button) stays outside
+ * the thumb's travel and renders plain rail.
+ * @param lineCount - all rendered transcript lines.
+ * @param height - the viewport height in rows.
+ * @param requestedOffset - the requested scroll offset (hidden bottom lines).
+ * @param bottomReserved - rows reserved at the bottom of the viewport.
+ * @returns the scrollbar geometry.
+ */
+export function selectScrollbar(
+  lineCount: number,
+  height: number,
+  requestedOffset: number,
+  bottomReserved = 0,
+): ScrollbarState {
+  const viewportHeight = Math.max(1, Math.floor(height))
+  const reserved = Math.max(0, Math.min(Math.floor(bottomReserved), viewportHeight - 1))
+  const capacity = Math.max(1, viewportHeight - reserved)
+  const maximumOffset = Math.max(0, Math.floor(lineCount) - capacity)
+  if (maximumOffset <= 0) {
+    return { visible: false, thumbTop: 0, thumbHeight: 0, contentHeight: capacity }
+  }
+  const offset = Math.min(Math.max(0, Math.floor(requestedOffset)), maximumOffset)
+  const thumbHeight = Math.min(capacity, Math.max(1, Math.round(capacity * capacity / Math.max(1, Math.floor(lineCount)))))
+  const progress = 1 - offset / maximumOffset
+  const thumbTop = Math.round(progress * (capacity - thumbHeight))
+  return { visible: true, thumbTop, thumbHeight, contentHeight: capacity }
+}
+
+/**
+ * Map one terminal row of the scrollbar column to the scroll offset whose
+ * thumb position lands there: the top row jumps to the OLDEST lines (maximum
+ * offset) and the bottom row to the newest (offset 0). Rows outside the
+ * column clamp to its ends.
+ * @param oneBasedRow - the clicked terminal row.
+ * @param topRow - the 1-based first row of the scrollbar column.
+ * @param contentHeight - the column's travel rows.
+ * @param maximumOffset - the current maximum scroll offset.
+ * @returns the target scroll offset.
+ */
+export function scrollOffsetForScrollbarRow(
+  oneBasedRow: number,
+  topRow: number,
+  contentHeight: number,
+  maximumOffset: number,
+): number {
+  const height = Math.max(1, Math.floor(contentHeight))
+  const top = Math.floor(topRow)
+  const bottom = top + height - 1
+  const clamped = Math.max(top, Math.min(Math.floor(oneBasedRow), bottom))
+  const fraction = height <= 1 ? 1 : (clamped - top) / (height - 1)
+  return Math.round((1 - fraction) * Math.max(0, Math.floor(maximumOffset)))
+}
+
 /** The previous code-point boundary at or before an offset. */
 export function previousCodePointBoundary(value: string, offset: number): number {
   if (offset <= 0) return 0
