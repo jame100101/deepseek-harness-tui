@@ -21,7 +21,8 @@ import { csiTailKey, escapeArbiter, syntheticKey } from './csi-arbiter'
 import {
   DISABLE_WHEEL_MOUSE, ENABLE_WHEEL_MOUSE, parseMouseReport, parseMouseWheel, scrollOffsetForWheel, stripMouseReports,
 } from './mouse'
-import { fitStatsStrip, formatStats, helpText, markdownLines, retryCountdownSeconds, welcomeBlock, wrapRuns } from './plain'
+import { formatStats, helpText, markdownLines, retryCountdownSeconds, welcomeBlock, wrapRuns, fitStatsStrip } from './plain'
+import { welcomeBanner } from './welcome-banner'
 import type { MdRun } from './plain'
 import { sanitizeTerminalText } from './sanitize'
 import {
@@ -1370,6 +1371,38 @@ export function App(props: {
   // turn is bounded; the cap only guards pathological sessions and must not
   // drop the first user message out of the scrollable history.
   const retryShimmer = hasPendingRetry && Math.floor(tick / 5) % 2 === 0
+
+  // ── layout budget ─────────────────────────────────────────────────────
+  // A panel action's notice pins one dim row under the panel list, so the
+  // feedback stays visible while the panel remains open.
+  const panelNoticeVisible = panelOpen && notice !== ''
+  // The composer becomes the masked credential/plugin-config editor while a
+  // credential row or plugin field is being edited inside a panel.
+  const composerDraft = pluginEdit !== null
+    ? pluginEditText
+    : settingsEdit !== null
+      ? settingsEditText
+      : draft
+  const composerDisplay = pluginEdit?.kind === 'secret'
+    ? '•'.repeat([...composerDraft].length)
+    : sanitizeTerminalText(composerDraft)
+  const composerLines = Math.min(
+    MAX_COMPOSER_LINES,
+    Math.max(1, selectComposerLayout(composerDisplay, composerDisplay.length, Math.max(1, width - 4), MAX_COMPOSER_LINES).visibleLines.length),
+  )
+  // The frame must ALWAYS fill the physical rows exactly: the cursor suffix
+  // compensation assumes the write ends on the last terminal row, so any
+  // clipped row would shift the caret off the input line. Budget the
+  // palette and the takeover down (in that order) until the chrome fits.
+  const reserved = 4 + 1 + composerLines + 1 + 3 + (panelNoticeVisible ? 1 : 0)
+  let takeoverH = pendingApproval !== null || pendingQuestion !== null ? 6 : 0
+  const fullPaletteH = palette !== null ? Math.min(MAX_POPUP_ITEMS + 2, Math.min(MAX_POPUP_ITEMS, palette.length) + 2) : 0
+  const paletteH = Math.min(fullPaletteH, Math.max(0, rowCount - reserved - takeoverH - 1))
+  takeoverH = Math.min(takeoverH, Math.max(0, rowCount - reserved - paletteH - 1))
+  const fixedRows = reserved + takeoverH + paletteH
+  const transcriptHeight = Math.max(1, rowCount - fixedRows)
+  const panelHeight = Math.max(1, transcriptHeight - 1 - (panelNoticeVisible ? 1 : 0))
+
   const settledLines = useMemo((): TranscriptLine[] => {
     if (viewMode === 'trajectory') {
       return snapshot.trace
@@ -1389,17 +1422,32 @@ export function App(props: {
     const nodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 3000))
     const lines: TranscriptLine[] = []
     if (nodes.length === 0) {
-      // Content width: the transcript box adds one padding cell per side.
-      welcomeBlock(width - 2, snapshot.model, snapshot.cwd, snapshot.sessionId, locale).forEach((line, index) => {
-        const chrome = line.startsWith('┏') || line.startsWith('┃') || line.startsWith('┗')
-        lines.push({ key: `welcome-${index}`, text: line, ...(chrome ? { color: 'yellow' } : { dim: true }) })
-      })
+      // First load of a NEW session only: the whale banner. Any event
+      // (user message, resume replay, …) fills `nodes`, so the banner can
+      // never reappear later in the session.
+      const banner = welcomeBanner(width - 2, transcriptHeight)
+      if (banner.length > 0) {
+        banner.forEach((entry, index) => {
+          lines.push({
+            key: `welcome-${index}`,
+            text: entry.text,
+            ...(entry.runs !== undefined ? { runs: entry.runs } : {}),
+            ...(entry.color !== undefined ? { color: entry.color } : {}),
+          })
+        })
+      } else {
+        // Too narrow/short for the art: the plain adaptive welcome card.
+        welcomeBlock(width - 2, snapshot.model, snapshot.cwd, snapshot.sessionId, locale).forEach((line, index) => {
+          const chrome = line.startsWith('┏') || line.startsWith('┃') || line.startsWith('┗')
+          lines.push({ key: `welcome-${index}`, text: line, ...(chrome ? { color: 'yellow' } : { dim: true }) })
+        })
+      }
     }
     for (const node of nodes) {
       lines.push(...nodeLines(node, width - 2, expandedOf(node), node.id === selectedId, retryShimmer, snapshot.feedback, locale))
     }
     return lines
-  }, [viewMode, snapshot.nodes, snapshot.trace, snapshot.model, snapshot.cwd, snapshot.sessionId, width, expanded, thinkCollapsed, thinkDefaultOpen, selectedId, retryShimmer, snapshot.feedback, locale])
+  }, [viewMode, snapshot.nodes, snapshot.trace, snapshot.model, snapshot.cwd, snapshot.sessionId, width, transcriptHeight, expanded, thinkCollapsed, thinkDefaultOpen, selectedId, retryShimmer, snapshot.feedback, locale])
   const liveThinkLines = useMemo((): TranscriptLine[] => {
     if (snapshot.live === null || !snapshot.busy || snapshot.live.think === '') return []
     // Claude Code style: the original spinning glyph stays up front, and the
@@ -1505,37 +1553,6 @@ export function App(props: {
   }, [])
 
   const pageSize = Math.max(1, rowCount - 12)
-
-  // ── layout budget ─────────────────────────────────────────────────────
-  // A panel action's notice pins one dim row under the panel list, so the
-  // feedback stays visible while the panel remains open.
-  const panelNoticeVisible = panelOpen && notice !== ''
-  // The composer becomes the masked credential/plugin-config editor while a
-  // credential row or plugin field is being edited inside a panel.
-  const composerDraft = pluginEdit !== null
-    ? pluginEditText
-    : settingsEdit !== null
-      ? settingsEditText
-      : draft
-  const composerDisplay = pluginEdit?.kind === 'secret'
-    ? '•'.repeat([...composerDraft].length)
-    : sanitizeTerminalText(composerDraft)
-  const composerLines = Math.min(
-    MAX_COMPOSER_LINES,
-    Math.max(1, selectComposerLayout(composerDisplay, composerDisplay.length, Math.max(1, width - 4), MAX_COMPOSER_LINES).visibleLines.length),
-  )
-  // The frame must ALWAYS fill the physical rows exactly: the cursor suffix
-  // compensation assumes the write ends on the last terminal row, so any
-  // clipped row would shift the caret off the input line. Budget the
-  // palette and the takeover down (in that order) until the chrome fits.
-  const reserved = 4 + 1 + composerLines + 1 + 3 + (panelNoticeVisible ? 1 : 0)
-  let takeoverH = pendingApproval !== null || pendingQuestion !== null ? 6 : 0
-  const fullPaletteH = palette !== null ? Math.min(MAX_POPUP_ITEMS + 2, Math.min(MAX_POPUP_ITEMS, palette.length) + 2) : 0
-  const paletteH = Math.min(fullPaletteH, Math.max(0, rowCount - reserved - takeoverH - 1))
-  takeoverH = Math.min(takeoverH, Math.max(0, rowCount - reserved - paletteH - 1))
-  const fixedRows = reserved + takeoverH + paletteH
-  const transcriptHeight = Math.max(1, rowCount - fixedRows)
-  const panelHeight = Math.max(1, transcriptHeight - 1 - (panelNoticeVisible ? 1 : 0))
 
   // ── panels ────────────────────────────────────────────────────────────
   const settingsRows = useMemo((): PanelRow[] => {

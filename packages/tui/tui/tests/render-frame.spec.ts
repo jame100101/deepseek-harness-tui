@@ -283,8 +283,10 @@ describe('Ink 7 full-screen render', () => {
     try {
       const lines = lastFrameLines(capture.output)
       expect(frameRows(lines)).toBe(ROWS)
-      expect(lines.some(line => line.includes('dsh-tui v0.0.13 · DeepSeek Harness'))).toBe(true) // welcome panel
-      expect(lines.some(line => line.includes('Session: session-abc12345'))).toBe(true) // full session id
+      // The first-load whale banner: braille pixel art + the block title.
+      expect(lines.some(line => line.includes('⣿⣿'))).toBe(true) // whale art
+      expect(lines.some(line => line.includes('███'))).toBe(true) // 3D block title
+      expect(lines.some(line => line.includes('session session-abc12345'))).toBe(true) // full session id in the header
       // A fullscreen frame writes NO trailing newline, so after the write the
       // terminal cursor rests ON the last row; Ink's suffix counts from one
       // line below it (`moveUp = visibleLineCount - y`). The renderer's +1
