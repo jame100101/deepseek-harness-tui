@@ -1058,4 +1058,29 @@ describe('Ink 7 full-screen render', () => {
       unmount()
     }
   })
+
+  it('scrolls back to the very first user prompt of a long session', async () => {
+    // The first prompt sits UNDER the wake-time context injections and a
+    // long first turn: scrolling to the top must still reach it.
+    const nodes: TuiNode[] = [
+      { kind: 'context', id: 0, text: 'workspace instructions', producer: 'agent-instructions' },
+      { kind: 'context', id: 1, text: 'system prompt', producer: 'dsh-system-prompt' },
+      { kind: 'context', id: 2, text: 'skill catalog', producer: 'skill-catalog' },
+      { kind: 'user', id: 3, text: 'the very first prompt' },
+      ...Array.from({ length: 60 }, (_, index) => ({
+        kind: 'assistant', id: 10 + index, text: `assistant row ${index}`, messageId: `m${index}`,
+      })),
+    ]
+    const { capture, unmount, type } = await mount(nodes)
+    try {
+      // Wheel up far past the maximum offset; the clamp stops at the top.
+      for (let tick = 0; tick < 30; tick += 1) {
+        await type('\x1b[<64;10;5M')
+      }
+      const lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('▸ the very first prompt'))).toBe(true)
+    } finally {
+      unmount()
+    }
+  }, 30_000)
 })
