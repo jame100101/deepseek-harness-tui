@@ -1,0 +1,42 @@
+# The dsh-tui-app bundle patch: the terminal surface over dsh-base.
+# Like headless, it mounts no Host, HTTP server, Web runtime, or browser
+# plugin. Unlike web-app, it leaves the base's agent-plane rows enabled —
+# the TUI is single-session and composes its agent process-wide, which is
+# exactly the composition the base keeps those rows for.
+
+- id: system-prompt
+  config:
+    persona: >-
+      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
+
+# The shared module-reload HMR row stays off; the launcher's watch-only
+# fallback still keeps the user patch layers live until the run exits.
+- id: hmr
+  disabled: true
+
+# ── the terminal surface ────────────────────────────────────────────────
+
+- insert:
+    - id: tui
+      name: '@deepseek-ai/dsh-tui'
+
+    # Durable per-message feedback sidecar (Web parity for 👍/👎): the base
+    # bundle already loads session-persistence; storage + storage-domain host
+    # the sidecar domain (the web-app rows, mirrored).
+    - id: storage
+      name: '@deepseek-ai/dsh-storage'
+
+    - id: storage-json
+      name: '@deepseek-ai/dsh-storage-json'
+      config:
+        root: !!js dshHomePath('storages')
+
+    - id: storage-domain
+      name: '@deepseek-ai/dsh-storage-domain'
+      config:
+        backend: json
+
+    - id: message-feedback
+      name: '@deepseek-ai/dsh-message-feedback'
+      config:
+        maxNoteBytes: 8192
