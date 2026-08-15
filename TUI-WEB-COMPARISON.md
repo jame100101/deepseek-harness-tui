@@ -1,6 +1,6 @@
 # dsh-tui 与 Web 版功能对比清单
 
-> 生成时间：本文件随 TUI 迭代更新。对比基准：`apps/web` + `packages/client/*`（web-app profile）与 `packages/tui/tui`（tui profile，v0.0.13）。
+> 生成时间：本文件随 TUI 迭代更新。对比基准：`apps/web` + `packages/client/*`（web-app profile）与 `packages/tui/tui`（tui profile，本仓库 commit `c5cc575`「width-safe whale banner」）。
 > 标记说明：✅ 已对齐 · 🟡 部分对齐（能力存在但交互/细节弱于 Web）· ❌ 缺失 · ➕ TUI 独有。
 
 ---
@@ -11,6 +11,8 @@
 | --- | --- | --- | --- |
 | 会话模型 | 多会话并行，侧栏切换 | 单会话进程级（/new 换新，/sessions 恢复） | 🟡 |
 | 布局 | 三栏可拖拽（sidebar 56–420 / center ≥640 / details） | 全屏单栏（header / transcript / permission / composer / status） | ❌ |
+| 首屏/品牌 | onboarding 流程 + 品牌页 | **宽度安全鲸鱼横幅**：13 行纯 `█ ▓ ▒ ░` 单格字符鲸鱼 + 6 行 3D `DEEPSEEK HARNESS` 标题（`█` 字形 + `░` 阴影）；Cascadia Mono / JetBrains Mono / Consolas 原生字形、无 fallback；窄终端降级为欢迎卡片、绝不折行 | ➕ |
+| 终端标签标题 | 浏览器标题 | `🐋 DeepSeek Harness`（OSC 设置，退出时恢复原标题；窄/legacy 终端降级 ✦ 品牌字形） | ➕ |
 | 主题 | dark / light（CSS 变量） | dark / light（ANSI 重映射） | ✅ |
 | 语言 | zh / en | zh / en（chrome 全部双语；会话日志结构行保持落盘语言） | 🟡 |
 | 持久化 | 会话/设置/凭据/反馈/投影全量落盘 | 同 core 落盘（storage-json + settings + credentials + feedback + 会话日志） | ✅ |
@@ -48,14 +50,14 @@
 | --- | --- | --- | --- |
 | Markdown | 完整（代码高亮/链接/图片/表格） | marked 渲染 + GFM 表格网格 + 代码块样式，无语法高亮 | 🟡 |
 | 上下文注入行 | 折叠行 + 展开 | 折叠行 + Space 展开 | ✅ |
-| Thinking | 折叠/展开 | Thinking 行 + 展开 + 实时渐变 | ✅ |
+| Thinking | 折叠/展开 | Thinking 行（旋转字形打头 + 灰度微光渐变）+ 展开 + 0.1s 精度耗时 | ✅ |
 | 工具卡片 | 结构化卡片（presentCall/presentResult 渲染意图） | 同一投影引擎的终端卡片，超长截断 | ✅ |
 | 命令卡片 | 各命令自定义卡片（compaction 等） | command/run 状态行 | 🟡 |
 | 重试行 | 重试条目展示 | ⟳ 折叠行 + 倒计时微光 | ✅ |
 | compaction 展示 | CompactionItem/Card 详情 | 实时 compacting 渐变行 + compacted 状态 | 🟡 |
 | 回合尾统计 | 回合尾 stats | └ turn N · LLM/工具/TTFT | ✅ |
 | deliverables（产出文件） | ProducedFiles 列表 + 点击打开 | 无（未投影 produced-files） | ❌ |
-| 消息操作（复制/打开文件） | 复制按钮、打开文件 | 无复制/打开（终端外能力限制） | ❌ |
+| 消息操作（复制/打开文件） | 复制按钮、打开文件 | 无应用内复制/打开（终端外能力限制；`/copy` 曾在内测分支实现、已回滚） | ❌ |
 | 消息反馈 👍/👎 | 悬停操作 + 备注 | 选择消息后 g/b（同 messageFeedback CAS 服务） | 🟡 |
 | 图片渲染 | 消息内缩略图 + lightbox | 图片块不渲染（仅文本） | ❌ |
 | 轨迹视图 | 时间线分组 + 时长视图 + 预览 | /trajectory 扁平轨迹（蓝=模型/红=工具/青=用户） | 🟡 |
@@ -150,7 +152,9 @@
 
 ## 13. TUI 独有（Web 没有）
 
+- **宽度安全鲸鱼横幅**：单格 `█▓▒░` 字符 + 3D 立体标题，原始多行字符串保存、终端 cell 宽度居中、窄屏降级不折行。
 - 终端原生：shell 风格输入历史、光标锚定/IME、Ctrl+C 双击退出。
+- 终端标签标题设置与退出恢复（🐋 / ✦ 降级）。
 - 插件运行时开关（HMR 热生效，Web 需改 yaml 重启）。
 - Shift+Tab 文件权限即时轮换 + 彩色常驻指示。
 - 状态栏 effort 常驻高亮。
