@@ -9,21 +9,30 @@
 
 import stringWidth from 'string-width'
 
-/** The DeepSeek whale pixel art — verbatim, do not reformat. */
-export const WHALE_ART: readonly string[] = [
-  '              ⣀⣀⣀⡀       ⣤⡀',
-  '      ⢀⣠⣴⣿⣿⣿⣿⣶⣤⣀      ⢰⣿⣷⣤⣄      ⣠⣤',
-  '    ⢀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄     ⢿⣿⣿⣿⣶⣤⣴⣿⣿⡟',
-  '   ⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦     ⠻⣿⣿⣿⣿⣿⡿⠋',
-  '  ⣿⣿⠋⠉⠉⠛⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣦⣤⣤⣿⣿⣿⠋',
-  '  ⣿⣿          ⠙⣿⣿⣿⣿⣿⣦⠈⢿⣿⣿⣿⣿⡿',
-  '  ⢿⣿⣧           ⠹⣿⣿⣿⣿⣿⣄⣸⣿⣿⣿⣿⠃',
-  '  ⠘⣿⣿⣦           ⠈⢿⣿⣿⣿⣿⣿⣿⣿⣿⠏',
-  '   ⠙⣿⣿⣷⣄       ⣤⣄   ⠻⣿⣿⣿⣿⣿⡿⠃',
-  '     ⠻⣿⣿⣷⣤⣀⣀⣀⣸⣿⣿⣶⣄   ⠙⠿⣿⣿⣤⣀',
-  '       ⠙⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⡶⠞⠋',
-  '           ⠉⠉⠛⠛⠛⠛⠉',
-]
+/**
+ * The DeepSeek whale art as one raw multi-line string — verbatim: never
+ * trimmed, dedented, formatted, wrapped, or re-flowed. Leading indentation
+ * is plain ASCII spaces (U+0020, no tabs). Every glyph is a single-cell
+ * block shade (`█` `▓` `▒` `░`) or an ASCII space, so Cascadia Mono,
+ * JetBrains Mono, and Consolas all render exactly one terminal cell per
+ * character with no font fallback and no width drift.
+ */
+export const WHALE_ART_RAW: string = `                ░░▒▓▓▓░     ▒█░
+      ░▒▓▓████████████░      ███▓▒       ▒▓
+  ▓█████████████████████▒   ░████████████░
+ █████████████████████████▒  ░▓████████▓░
+▓██▓▓▓▓█████████████████████▒░ ▓███▓▒░
+███      ░▒▓██████████▒▒▓██████████▒
+███          ░▓███████▒█  ▓████████
+███▓           ░▓███████░  ░██████▒
+▒███░            ░███████▓▓██████▓
+ ░████▒      ░▒░    ▒██████████▒
+  ░▓████▒░   ░███▒░  ░███████▓░
+      ░▓███████████████▓▓▓▒▒▓▓▓▓▒░
+         ░▒▓▓███████▓▓▒░`
+
+/** The raw whale art split into lines; `split` never trims or re-flows. */
+export const WHALE_ART: readonly string[] = WHALE_ART_RAW.split('\n')
 
 /** DeepSeek brand blue for the whale (ANSI TrueColor). */
 export const WHALE_COLOR = '#4D6BFE'
@@ -47,58 +56,67 @@ export interface BannerRow {
   width: number
 }
 
-/** 5x5 block glyphs for the title's letters. */
+/**
+ * 6-column x 5-row block glyphs for the title's letters, drawn in `█` only.
+ * ANSI-Shadow-inspired letterforms; the 3D depth comes from the computed
+ * `░` shadow layer, never from box-drawing or fullwidth characters.
+ */
 const FONT: Record<string, readonly string[]> = {
-  D: ['████ ', '█  █ ', '█  █ ', '█  █ ', '████ '],
-  E: ['████ ', '█    ', '████ ', '█    ', '████ '],
-  P: ['████ ', '█  █ ', '████ ', '█    ', '█    '],
-  S: ['████ ', '█    ', '████ ', '    █', '████ '],
-  K: ['█  █ ', '█ █  ', '██   ', '█ █  ', '█  █ '],
-  H: ['█  █ ', '█  █ ', '████ ', '█  █ ', '█  █ '],
-  A: [' ██  ', '█  █ ', '████ ', '█  █ ', '█  █ '],
-  R: ['████ ', '█  █ ', '████ ', '█ █  ', '█  █ '],
-  N: ['█  █ ', '██ █ ', '█ ██ ', '█  █ ', '█  █ '],
+  D: ['█████ ', '██  ██', '██  ██', '██  ██', '█████ '],
+  E: ['██████', '██    ', '█████ ', '██    ', '██████'],
+  P: ['█████ ', '██  ██', '█████ ', '██    ', '██    '],
+  S: ['██████', '██    ', '█████ ', '    ██', '██████'],
+  K: ['██  ██', '██ ██ ', '████  ', '██ ██ ', '██  ██'],
+  H: ['██  ██', '██  ██', '██████', '██  ██', '██  ██'],
+  A: [' ████ ', '██  ██', '██████', '██  ██', '██  ██'],
+  R: ['█████ ', '██  ██', '█████ ', '██ ██ ', '██  ██'],
+  N: ['██  ██', '███ ██', '██ ███', '██  ██', '██  ██'],
 }
 
-const LETTER_WIDTH = 5
+const LETTER_WIDTH = 6
 const LETTER_GAP = 1
 const SPACE_WIDTH = 3
+const GLYPH_ROWS = 5
 
 /**
- * Precompute the 3D title: the 5-row block text with its shadow layer
- * offset one row down and one column right. A shadow cell renders only
- * where the main glyph does not already paint. Deterministic module-scope
- * build — no external commands, no runtime generation.
+ * Precompute the 3D title: `GLYPH_ROWS` rows of block text plus one trailing
+ * shadow row, offset one row down and one column right. A shadow cell is
+ * drawn as a `░` where the main glyph does not already paint. Deterministic
+ * module-scope build — no external commands, no runtime generation.
  * @param text - the title text.
  * @returns the precomputed rows.
  */
 function buildTitleRows(text: string): BannerRow[] {
   const glyphs = [...text].map(character => FONT[character] ?? null)
   const totalWidth = glyphs.reduce((width, glyph) => width + (glyph === null ? SPACE_WIDTH : LETTER_WIDTH + LETTER_GAP), -LETTER_GAP)
-  const grid: string[][] = Array.from({ length: 6 }, () => Array.from({ length: totalWidth }, () => ' '))
+  const grid: string[][] = Array.from({ length: GLYPH_ROWS + 1 }, () => Array.from({ length: totalWidth }, () => ' '))
   let column = 0
   for (const glyph of glyphs) {
     if (glyph === null) {
       column += SPACE_WIDTH + LETTER_GAP
       continue
     }
-    for (let row = 0; row < 5; row += 1) {
+    for (let row = 0; row < GLYPH_ROWS; row += 1) {
+      const gridRow = grid[row]
+      const glyphRow = glyph[row]
+      if (gridRow === undefined || glyphRow === undefined) continue
       for (let cell = 0; cell < LETTER_WIDTH; cell += 1) {
-        grid[row]![column + cell] = glyph[row]![cell] ?? ' '
+        gridRow[column + cell] = glyphRow[cell] ?? ' '
       }
     }
     column += LETTER_WIDTH + LETTER_GAP
   }
   const rows: BannerRow[] = []
-  for (let row = 0; row < 6; row += 1) {
+  for (let row = 0; row < GLYPH_ROWS + 1; row += 1) {
     const runs: BannerRun[] = []
     let current = ''
     let currentColor = ''
     for (let cell = 0; cell < totalWidth; cell += 1) {
-      const main = grid[row]![cell] === '█'
-      const shadow = row > 0 && cell > 0 && grid[row - 1]![cell - 1] === '█' && grid[row]![cell] !== '█'
+      const gridRow = grid[row] ?? []
+      const main = gridRow[cell] === '█'
+      const shadow = row > 0 && cell > 0 && (grid[row - 1]?.[cell - 1] ?? '') === '█' && gridRow[cell] !== '█'
       const color = main ? TITLE_MAIN_COLOR : shadow ? TITLE_SHADOW_COLOR : ''
-      const character = main || shadow ? '█' : ' '
+      const character = main ? '█' : shadow ? '░' : ' '
       if (color === currentColor) {
         current += character
       } else {
@@ -122,8 +140,8 @@ export const WHALE_WIDTH: number = WHALE_ART.reduce((width, line) => Math.max(wi
 /** The title width, in cells. */
 export const TITLE_WIDTH: number = TITLE_ROWS[0]?.width ?? 0
 
-/** The full banner's height (whale + gap + title). */
-export const BANNER_HEIGHT: number = WHALE_ART.length + 1 + TITLE_ROWS.length
+/** The full banner's height (whale + title). */
+export const BANNER_HEIGHT: number = WHALE_ART.length + TITLE_ROWS.length
 
 /**
  * Center one banner row in the content width, folding the left pad into the
@@ -163,7 +181,6 @@ export function welcomeBanner(contentWidth: number, height: number): WelcomeBann
       const pad = Math.max(0, Math.floor((contentWidth - stringWidth(art)) / 2))
       lines.push({ text: `${' '.repeat(pad)}${art}`, color: WHALE_COLOR })
     }
-    lines.push({ text: '' })
     for (const row of TITLE_ROWS) {
       lines.push({ text: '', runs: centerRow(row.runs, row.width, contentWidth) })
     }
