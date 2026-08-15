@@ -1,3 +1,5 @@
+# DeepSeek Harness TUI (`dsh-tui`)
+
 <p align="center">
   <a href="#install--run"><img alt="Node 22" src="https://img.shields.io/badge/NODE-22+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white"></a>
   <a href="#technical-architecture"><img alt="React 19" src="https://img.shields.io/badge/REACT-19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB"></a>
@@ -8,8 +10,6 @@
 </p>
 
 <p align="center"><strong>English</strong> · <a href="#简体中文">简体中文</a> · Local-first · Session persistence · Tool runtime</p>
-
-# DeepSeek Harness TUI (`dsh-tui`)
 
 > ⚠️ **Final development stage.** This repository is still under active development.
 > Packaging and publishing are **NOT done yet** — everything runs from the local
@@ -278,13 +278,76 @@ pnpm exec dsh --profile tui   # 构建产物启动（约 2.7s，推荐日常使�
 
 ### 全部功能用法（速查）
 
-**输入**：`Enter` 发送 · `Shift+Enter` 硬换行 · `Ctrl+Enter` steer · `↑/↓` shell 式输入历史 · 草稿最多 5 行自动换行 · 支持粘贴与 IME · 900KB 输入上限。
+**输入**
 
-**斜杠命令**：`/help` 帮助 · `/clear` 清提示（会话保留）· `/trajectory` 轨迹视图 · `/model` 选模型 · `/settings [general|models|plugins|inventory]` 四页设置 · `/jobs` 任务面板（Enter 杀任务）· `/subagents` 子代理树 · `/workflows` workflow 进度 · `/sessions [过滤]` 会话列表（Enter 恢复，完整历史重放）· `/effort off|high|max` 推理力度 · `/goal` 目标详情 · `/rename <标题>` 重命名 · `/workspace <目录>` 切换工作目录 · `/attach <图片>` 附加图片 · `/fork [seq]` 分叉会话 · `/new` 新会话 · `/quit`/`/exit` 保存退出。`/` 会弹出命令面板（↑↓ 选择、Enter 执行、Tab 补全、Esc 取消）。
+| 操作 | 按键 |
+| --- | --- |
+| 发送消息 | `Enter` |
+| 草稿硬换行 | `Shift+Enter` |
+| 忙时插队（steer） | `Ctrl+Enter` |
+| shell 式输入历史 | `↑` / `↓`（草稿为空） |
+| 草稿换行 | 最多 5 行，按终端宽度自动换行 |
+| 粘贴 | 终端粘贴 / usePaste（控制序列已清洗） |
+| 输入上限 | 900 KB（前端校验） |
+| 输入法 | 支持 IME（原生光标锚定，不会乱光标） |
 
-**按键**：`Shift+Tab` 轮换沙箱权限 `read-only → workspace-write → danger-full-access`（输入栏上方白/黄/红常驻）· `Ctrl+C` 取消回合、2 秒内再按退出 · `Ctrl+L` 清提示与草稿 · `Ctrl+D` 退出 · `Tab` 进入消息选择模式（↑↓ 移动、Space 展开/折叠、g 赞 / b 踩、Esc 返回）· `PgUp`/`PgDn`/`End`/`Ctrl+Home` 翻页 · 滚轮滚动转录或面板 · 上翻时点击居中反色"回到底部"按钮 · 面板内 `q` 关闭、`c` 编辑插件配置。
+**斜杠命令**
 
-**显示**：宽度安全鲸鱼横幅（`█▓▒░` 单格字符 + 6 行立体标题，窄终端降级为欢迎卡片、绝不折行）· Thinking 灰度微光 + 0.1s 耗时 + 可展开 · 流式回复 · 与 Web 同源的工具渲染意图卡片 · 重试倒计时微光 · compaction 实时渐变行 · 底部统计条（轮/步/LLM/工具/TTFT/tok + 上下文占用 + effort 常驻高亮）· 队列/todo/goal/附件 dock · 审批与 ask_user 覆盖层 · 终端标签标题（🐋，退出时恢复原标题）· 非 TTY 环境自动降级为行式输出。
+| 命令 | 功能 |
+| --- | --- |
+| `/help` | 显示全部命令 |
+| `/clear` | 清空提示（保留会话） |
+| `/trajectory` | 切换结构化轨迹视图（蓝=模型/红=工具/青=用户） |
+| `/model` | 打开模型页选择默认模型 |
+| `/settings [general\|models\|plugins\|inventory]` | 打开四页设置 |
+| `/jobs` | 后台任务面板（Enter 杀掉选中任务，每秒轮询） |
+| `/subagents` | 子代理树面板（深度缩进、活动状态） |
+| `/workflows` | workflow 运行进度面板（阶段/agent 数/日志/错误） |
+| `/sessions [过滤]` | 活动 + 持久化会话列表，Enter 恢复（完整历史重放） |
+| `/effort off\|high\|max` | 设置/清除当前路由的推理力度 |
+| `/goal` | 当前目标详情（阶段/轮次/目标文本） |
+| `/rename <标题>` | 重命名会话标题 |
+| `/workspace <目录>` | 切换工作目录（对本次及之后会话生效） |
+| `/attach <图片>` | 附加 png/jpg/gif/webp 到下一消息 |
+| `/fork [seq]` | 在最后完成回合（或包含 seq 的回合）处分叉会话 |
+| `/new` | 开始新会话 |
+| `/quit` / `/exit` | 保存并退出 |
+
+`/` 会弹出命令面板（↑↓ 选择、Enter 执行、Tab 补全、Esc 取消）。
+
+**按键**
+
+| 按键 | 作用 |
+| --- | --- |
+| `Shift+Tab` | 轮换沙箱权限 `read-only → workspace-write → danger-full-access`（输入栏上方白/黄/红常驻） |
+| `Ctrl+C` | 取消当前回合；2 秒内再按退出 |
+| `Ctrl+L` | 清空提示与草稿 |
+| `Ctrl+D` | 退出（空闲且草稿为空） |
+| `Tab`（草稿为空） | 进入消息选择模式 |
+| `↑` / `↓`（选择模式） | 在节点间移动 |
+| `Space`（选择模式） | 展开/折叠 Thinking/上下文/工具/重试正文 |
+| `g` / `b`（选择模式） | 对选中助手消息 👍 / 👎 反馈 |
+| `Esc` | 退出选择模式 / 关闭面板 / 取消（忙时） |
+| `PgUp` / `PgDn`、`End`、`Ctrl+Home` | 转录翻页 |
+| 滚轮 | 滚动转录（3 行/格）或打开的面板 |
+| 鼠标点击 | 上翻时点击居中反色"回到底部"悬浮按钮 |
+| 面板内按键 | `↑`/`↓` 选择 · `Enter` 激活 · `q` 关闭 · `Tab` 换设置页 · `c` 编辑插件配置（插件页） |
+
+**显示特性**
+
+| 特性 | 说明 |
+| --- | --- |
+| 欢迎横幅 | 纯 `█▓▒░` 单格字符鲸鱼（13 行）+ 6 行立体 `DEEPSEEK HARNESS` 标题；原始多行字符串保存、终端 cell 宽度居中；窄终端降级为欢迎卡片、绝不折行 |
+| Thinking | 旋转字形打头 + 灰度微光渐变；settle 行显示 0.1s 精度耗时，可 Space 展开（或设置里默认展开） |
+| 流式回复 | 助手文本带光标流式输出；完成后按 Markdown 渲染（GFM 表格/代码块/runs） |
+| 工具卡片 | 与 Web 同源的 presentCall / presentResult 渲染意图投影，终端样式，超长截断 |
+| 重试 | 折叠重试链 + 实时倒计时微光 |
+| compaction | 运行中实时 compacting 渐变行 |
+| 统计条 | 轮/步/LLM/工具/TTFT/tok + 上下文占用（contextPressure 实时投影）+ effort 常驻高亮 |
+| Dock | 队列预览（⧗）、todo 计数、goal 状态、图片附件提示 |
+| 审批/提问 | 全屏覆盖：y/Enter 允许一次、n/Esc 拒绝；ask_user 用 ↑↓ 选择或直接输入自定义答案 |
+| 标签标题 | 设置 🐋 DeepSeek Harness，退出时恢复原标题 |
+| 非 TTY 降级 | 管道/CI 自动切换为行式输出，应答器 fail-closed |
 
 ### 技术架构
 
