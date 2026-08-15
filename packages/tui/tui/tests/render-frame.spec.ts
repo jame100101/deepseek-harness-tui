@@ -12,7 +12,7 @@ import { createElement } from 'react'
 import { describe, expect, it, afterEach } from 'vitest'
 import { render } from 'ink'
 import stringWidth from 'string-width'
-import { App, permissionColor, permissionLabel, traceLineColor } from '../src/render'
+import { App, permissionColor, permissionLabel, thinkingShimmerHex, thinkingShimmerLevel, traceLineColor } from '../src/render'
 import type { TuiHost } from '../src/render'
 import { createTuiStore } from '../src/store'
 import type { TuiStore } from '../src/store'
@@ -957,5 +957,55 @@ describe('Ink 7 full-screen render', () => {
     } finally {
       unmount()
     }
+  })
+
+  it('renders the Claude-style ✻ Thinking shimmer instead of a spinning glyph', async () => {
+    const { store, capture, unmount } = await mount([{ kind: 'user', id: 1, text: 'hi' }])
+    try {
+      const snapshot = store.getSnapshot()
+      store.set({
+        ...snapshot,
+        version: snapshot.version + 1,
+        busy: true,
+        live: { text: '', think: '正在推理', thinkSince: Date.now() },
+      })
+      await new Promise<void>(resolve => setTimeout(resolve, 400))
+      const lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('✻ Thinking'))).toBe(true)
+      // No braille spinner glyphs anywhere in the frame.
+      expect(lines.some(line => /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(line))).toBe(false)
+    } finally {
+      unmount()
+    }
+  })
+
+  it('sweeps the grayscale highlight window left to right with smooth falloff', () => {
+    const length = 10
+    // At phase 0 the window enters from the left: index 0 sits inside the
+    // band, far indices stay at the dark base.
+    const at0 = Array.from({ length }, (_, index) => thinkingShimmerLevel(index, 0, length))
+    expect(at0[0]).toBeGreaterThan(at0[5])
+    expect(thinkingShimmerLevel(9, 0, length)).toBe(60)
+    // The window center reaches near-white and the band is symmetric
+    // around it: dark → gray → white → gray → dark.
+    const centerPhase = 4 // center = phase % span - 4 = 0 → index 0 is the peak
+    const band = Array.from({ length: 11 }, (_, index) => thinkingShimmerLevel(index - 5, centerPhase, length))
+    expect(band[0]).toBe(60)
+    expect(band[2]).toBeGreaterThan(band[0])
+    expect(band[5]).toBe(255)
+    expect(band[8]).toBeGreaterThan(band[10])
+    expect(band[10]).toBe(60)
+    // The peak sweeps right as the phase advances.
+    const peakAt = (phase: number): number => {
+      let best = 0
+      for (let index = 0; index < length; index += 1) {
+        if (thinkingShimmerLevel(index, phase, length) >= thinkingShimmerLevel(best, phase, length)) best = index
+      }
+      return best
+    }
+    expect(peakAt(4)).toBeLessThan(peakAt(10))
+    // Grayscale hex encoding: base and peak.
+    expect(thinkingShimmerHex(60)).toBe('#3c3c3c')
+    expect(thinkingShimmerHex(255)).toBe('#ffffff')
   })
 })

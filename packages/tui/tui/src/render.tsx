@@ -329,6 +329,38 @@ export function traceLineColor(text: string): 'blue' | 'red' | 'cyan' | undefine
   return undefined
 }
 
+/** Half-width of the highlight window in cells (a 9-cell soft band). */
+const SHIMMER_WINDOW = 4
+
+/**
+ * One character's grayscale level under the sweeping highlight. The window
+ * (dark gray → gray → near-white → gray → dark gray, smoothstep falloff)
+ * travels left to right across the label and loops. Pure: the renderer
+ * stamps one phase per tick (~100ms).
+ * @param index - the character index inside the label.
+ * @param phase - the animation phase (increments once per tick).
+ * @param length - the label length the window sweeps across.
+ * @returns the grayscale level, 0-255.
+ */
+export function thinkingShimmerLevel(index: number, phase: number, length: number): number {
+  const span = length + SHIMMER_WINDOW * 2 + 1
+  const center = (phase % span) - SHIMMER_WINDOW
+  const t = Math.max(0, Math.min(1, 1 - Math.abs(index - center) / (SHIMMER_WINDOW + 1)))
+  const smooth = t * t * (3 - 2 * t)
+  return Math.round(60 + 195 * smooth)
+}
+
+/**
+ * One grayscale level as a TrueColor hex (chalk downlevels it to ANSI-256
+ * automatically on terminals without 24-bit support).
+ * @param level - the grayscale level, 0-255.
+ * @returns the `#rrggbb` color.
+ */
+export function thinkingShimmerHex(level: number): string {
+  const value = Math.max(0, Math.min(255, level)).toString(16).padStart(2, '0')
+  return `#${value}${value}${value}`
+}
+
 /** Host callbacks the renderer drives; supplied by the plugin. */
 export interface TuiHost {
   submit(text: string, steer: boolean): void
@@ -1281,25 +1313,27 @@ export function App(props: {
   }, [viewMode, snapshot.nodes, snapshot.trace, snapshot.model, snapshot.cwd, snapshot.sessionId, width, expanded, thinkCollapsed, thinkDefaultOpen, selectedId, retryShimmer, snapshot.feedback, locale])
   const liveThinkLines = useMemo((): TranscriptLine[] => {
     if (snapshot.live === null || !snapshot.busy || snapshot.live.think === '') return []
-    const spinner = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    // Soft whole-line gradient: cyan → yellow → green.
-    const paletteColors = ['cyan', 'yellow', 'green']
+    // Claude Code style: one `✻ Thinking …` row whose letters carry a soft
+    // grayscale highlight window sweeping left to right (no spinner as the
+    // primary motion, no whole-row color flashes). Ink diffs the frame, so
+    // only this row rewrites in place each tick.
+    const label = '✻ Thinking'
     const elapsed = snapshot.live.thinkSince === null ? 0 : Date.now() - snapshot.live.thinkSince
-    const color = paletteColors[Math.floor(tick / 8) % paletteColors.length]
-    // Stable keys: these rows re-render every tick; a position-derived
-    // key would churn as the transcript grows and can leave stale rows.
-    const lines: TranscriptLine[] = [{
-      key: 'live-think',
-      text: `${spinner[tick % spinner.length]} Thinking ${(elapsed / 1000).toFixed(1)}s ▶`,
-      ...(color !== undefined ? { color } : {}),
-    }]
+    const runs = [
+      ...[...label].map((character, index) => ({
+        text: character,
+        color: thinkingShimmerHex(thinkingShimmerLevel(index, tick, label.length)),
+      })),
+      { text: ` ${(elapsed / 1000).toFixed(1)}s…`, dim: true },
+    ]
+    // Stable keys: this row re-renders every tick; a position-derived key
+    // would churn as the transcript grows and can leave stale rows.
+    const lines: TranscriptLine[] = [{ key: 'live-think', text: '', runs }]
     const tail = snapshot.live.think.split('\n').at(-1) ?? ''
     if (tail !== '') {
-      const tailColor = paletteColors[(Math.floor(tick / 8) + 1) % paletteColors.length]
       lines.push({
         key: 'live-think-tail',
         text: `  │ ${tail.slice(-60)}`,
-        ...(tailColor !== undefined ? { color: tailColor } : {}),
         dim: true,
       })
     }
