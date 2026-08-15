@@ -332,14 +332,6 @@ export function traceLineColor(text: string): 'blue' | 'red' | 'cyan' | undefine
   return undefined
 }
 
-/** The muted dark shimmer palette swept across the live "Thinking" letters. */
-const THINKING_GRADIENT = ['blackBright', 'gray', 'whiteBright', 'cyan'] as const
-
-/** One character's color in the live Thinking shimmer wave. */
-export function thinkingGradientColor(index: number, phase: number): string {
-  return THINKING_GRADIENT[(index + phase) % THINKING_GRADIENT.length] ?? 'gray'
-}
-
 /** Host callbacks the renderer drives; supplied by the plugin. */
 export interface TuiHost {
   submit(text: string, steer: boolean): void
@@ -648,8 +640,8 @@ function Transcript(props: {
       justifyContent="flex-end"
     >
       {viewport.offset > 0 ? (
-        <Text key="scroll-banner" dimColor>
-          {COPY[props.locale].scrollBanner(viewport.offset)}
+        <Text key="scroll-banner" dimColor wrap="truncate">
+          {fitDisplayText(COPY[props.locale].scrollBanner(viewport.offset), Math.max(1, props.width - 2))}
         </Text>
       ) : null}
       {viewport.lines.map((line, index) => (
@@ -713,16 +705,20 @@ function CommandPaletteView(props: {
   matches: readonly { name: string; description: string }[]
   selectedIndex: number
   width: number
+  height: number
   locale: Locale
 }): React.ReactElement {
   const paletteWidth = Math.max(1, Math.floor(props.width))
   const contentWidth = Math.max(1, paletteWidth - 2)
   const items = props.matches
   const copy = COPY[props.locale]
-  const start = Math.max(0, Math.min(props.selectedIndex - 7, Math.max(0, items.length - MAX_POPUP_ITEMS)))
-  const visibleItems = items.slice(start, start + MAX_POPUP_ITEMS)
+  // The budgeted height owns the rendered rows: title + hint take two, the
+  // rest list items — never more, or the rows below get overwritten.
+  const itemCapacity = Math.max(0, props.height - 2)
+  const start = Math.max(0, Math.min(props.selectedIndex - (itemCapacity - 1), Math.max(0, items.length - itemCapacity)))
+  const visibleItems = items.slice(start, start + itemCapacity)
   return (
-    <Box flexDirection="column" paddingX={paletteWidth > 2 ? 1 : 0} width={paletteWidth} overflow="hidden">
+    <Box flexDirection="column" paddingX={paletteWidth > 2 ? 1 : 0} width={paletteWidth} height={Math.max(1, props.height)} overflow="hidden">
       <Text bold color="cyan" wrap="truncate">{shorten(copy.paletteTitle, contentWidth)}</Text>
       {visibleItems.length === 0
         ? <Text dimColor>{copy.noMatch}</Text>
@@ -906,7 +902,12 @@ function ImeTextInput(props: {
         />
       ) : null}
       {props.value === ''
-        ? <Text dimColor wrap="truncate">{props.placeholder}</Text>
+        ? (props.focus
+            // Focused + empty keeps the row via a non-breaking space: the
+            // placeholder hides so the IME pre-edit popup never collides
+            // with it, and Ink drops whitespace-only Text content.
+            ? <Text wrap="truncate">{'\u00a0'}</Text>
+            : <Text dimColor wrap="truncate">{props.placeholder}</Text>)
         : layout.visibleLines.map((line, index) => (
             <Text key={index} wrap="truncate">{line === '' ? ' ' : line}</Text>
           ))}
@@ -1075,7 +1076,7 @@ function PermissionBar(props: {
   )
 }
 
-/** The approval/question takeover occupying six rows above the composer. */
+/** The approval/question takeover occupying the budgeted rows above the composer. */
 function Takeover(props: {
   snapshot: ReturnType<TuiStore['getSnapshot']>
   approvalSel: number
@@ -1083,13 +1084,14 @@ function Takeover(props: {
   questionSel: number
   questionText: string
   width: number
+  height: number
   locale: Locale
 }): React.ReactElement {
   const approval = props.snapshot.pendingApproval
   const question = props.snapshot.pendingQuestion?.questions[Math.min(props.questionIndex, (props.snapshot.pendingQuestion?.questions.length ?? 1) - 1)]
   const copy = COPY[props.locale]
   return (
-    <Box flexDirection="column" paddingX={1}>
+    <Box flexDirection="column" paddingX={1} height={Math.max(1, props.height)} overflow="hidden">
       {approval !== null ? (
         <>
           <Text wrap="truncate" color="yellow" bold>{`${copy.approval}${approval.toolName}`}</Text>
@@ -1190,6 +1192,8 @@ export function App(props: {
 
   useEffect(() => {
     stdout.write(ENABLE_WHEEL_MOUSE)
+    // The terminal tab reads this session as DSH-TUI instead of the shell.
+    stdout.write('\x1b]0;DSH-TUI\x07')
     return () => { stdout.write(DISABLE_WHEEL_MOUSE) }
   }, [stdout])
 
@@ -1286,24 +1290,24 @@ export function App(props: {
   const liveThinkLines = useMemo((): TranscriptLine[] => {
     if (snapshot.live === null || !snapshot.busy || snapshot.live.think === '') return []
     const spinner = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    // Claude Code style: a muted dark shimmer sweeps across the "Thinking"
-    // letters themselves, never recoloring the whole row.
-    const phase = Math.floor(tick / 3)
+    // Soft whole-line gradient: cyan → yellow → green.
+    const paletteColors = ['cyan', 'yellow', 'green']
     const elapsed = snapshot.live.thinkSince === null ? 0 : Date.now() - snapshot.live.thinkSince
-    const label = 'Thinking'
-    const runs = [
-      { text: `${spinner[tick % spinner.length]} `, color: 'gray' },
-      ...[...label].map((character, index) => ({ text: character, color: thinkingGradientColor(index, phase) })),
-      { text: ` ${(elapsed / 1000).toFixed(1)}s ▶`, dim: true },
-    ]
+    const color = paletteColors[Math.floor(tick / 8) % paletteColors.length]
     // Stable keys: these rows re-render every tick; a position-derived
     // key would churn as the transcript grows and can leave stale rows.
-    const lines: TranscriptLine[] = [{ key: 'live-think', text: '', runs }]
+    const lines: TranscriptLine[] = [{
+      key: 'live-think',
+      text: `${spinner[tick % spinner.length]} Thinking ${(elapsed / 1000).toFixed(1)}s ▶`,
+      ...(color !== undefined ? { color } : {}),
+    }]
     const tail = snapshot.live.think.split('\n').at(-1) ?? ''
     if (tail !== '') {
+      const tailColor = paletteColors[(Math.floor(tick / 8) + 1) % paletteColors.length]
       lines.push({
         key: 'live-think-tail',
         text: `  │ ${tail.slice(-60)}`,
+        ...(tailColor !== undefined ? { color: tailColor } : {}),
         dim: true,
       })
     }
@@ -1378,8 +1382,6 @@ export function App(props: {
   const pageSize = Math.max(1, rowCount - 12)
 
   // ── layout budget ─────────────────────────────────────────────────────
-  const takeoverH = pendingApproval !== null || pendingQuestion !== null ? 6 : 0
-  const paletteH = palette !== null ? Math.min(MAX_POPUP_ITEMS + 2, Math.min(MAX_POPUP_ITEMS, palette.length) + 2) : 0
   // A panel action's notice pins one dim row under the panel list, so the
   // feedback stays visible while the panel remains open.
   const panelNoticeVisible = panelOpen && notice !== ''
@@ -1397,8 +1399,16 @@ export function App(props: {
     MAX_COMPOSER_LINES,
     Math.max(1, selectComposerLayout(composerDisplay, composerDisplay.length, Math.max(1, width - 4), MAX_COMPOSER_LINES).visibleLines.length),
   )
-  // Header(4) + composer separator(1) + composer lines + permission bar(1) + status bar(3).
-  const fixedRows = 4 + 1 + composerLines + 1 + 3 + takeoverH + paletteH + (panelNoticeVisible ? 1 : 0)
+  // The frame must ALWAYS fill the physical rows exactly: the cursor suffix
+  // compensation assumes the write ends on the last terminal row, so any
+  // clipped row would shift the caret off the input line. Budget the
+  // palette and the takeover down (in that order) until the chrome fits.
+  const reserved = 4 + 1 + composerLines + 1 + 3 + (panelNoticeVisible ? 1 : 0)
+  let takeoverH = pendingApproval !== null || pendingQuestion !== null ? 6 : 0
+  const fullPaletteH = palette !== null ? Math.min(MAX_POPUP_ITEMS + 2, Math.min(MAX_POPUP_ITEMS, palette.length) + 2) : 0
+  const paletteH = Math.min(fullPaletteH, Math.max(0, rowCount - reserved - takeoverH - 1))
+  takeoverH = Math.min(takeoverH, Math.max(0, rowCount - reserved - paletteH - 1))
+  const fixedRows = reserved + takeoverH + paletteH
   const transcriptHeight = Math.max(1, rowCount - fixedRows)
   const panelHeight = Math.max(1, transcriptHeight - 1 - (panelNoticeVisible ? 1 : 0))
 
@@ -2210,7 +2220,7 @@ export function App(props: {
         <Text dimColor>{fitDisplayText(notice.split('\n')[0] ?? '', Math.max(1, width - 2))}</Text>
       ) : null}
       {palette !== null && !panelOpen ? (
-        <CommandPaletteView matches={palette} selectedIndex={paletteSelectedIndex} width={width - 2} locale={locale} />
+        <CommandPaletteView matches={palette} selectedIndex={paletteSelectedIndex} width={width - 2} height={Math.max(1, paletteH)} locale={locale} />
       ) : null}
       {takeoverH > 0 ? (
         <Takeover
@@ -2220,6 +2230,7 @@ export function App(props: {
           questionSel={questionSel}
           questionText={questionText}
           width={width}
+          height={takeoverH}
           locale={locale}
         />
       ) : null}

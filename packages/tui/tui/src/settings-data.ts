@@ -231,11 +231,14 @@ export function buildSessionRows(sessions: readonly SessionEntry[], filter: stri
   }
   for (const entry of matching) {
     const live = entry.live === true || (entry.live === undefined && entry.status !== 'persisted')
-    const title = entry.title !== undefined && entry.title !== '' ? ` · ${entry.title}` : ''
     const created = entry.createdAt === undefined ? '' : ` · ${new Date(entry.createdAt).toLocaleString()}`
+    // The first-prompt summary title LEADS the row (the Web sidebar style);
+    // the raw id trails it for stable reference/filtering.
+    const hasTitle = entry.title !== undefined && entry.title !== ''
+    const head = hasTitle ? `${entry.title} · ${entry.id.slice(0, 12)}` : entry.id.slice(0, 12)
     rows.push({
       key: `sess-${entry.id}`,
-      text: `${live ? '●' : '○'} ${entry.id.slice(0, 12)} · ${entry.model === '' ? '—' : entry.model}${title}${live ? ' · live' : ` · ${locale === 'en' ? 'persisted' : '持久化'}${created}`}`,
+      text: `${live ? '●' : '○'} ${head} · ${entry.model === '' ? '—' : entry.model}${live ? ' · live' : ` · ${locale === 'en' ? 'persisted' : '持久化'}${created}`}`,
       ...(live ? {} : { action: 'resume-session' as const, meta: { id: entry.id } }),
     })
   }

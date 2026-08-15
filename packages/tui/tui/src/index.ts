@@ -206,20 +206,31 @@ async function loadSessionRows(ctx: Context, liveRows: readonly SessionEntry[]):
     const records = await query.listSessions()
     const newest = records.slice(0, 50)
     const titles = await query.readTitleSnapshots(newest.map(record => record.header.id))
-    const rows: SessionEntry[] = newest.map((record, index) => {
-      const titleResult = titles[index]
-      const title = titleResult?.status === 'fulfilled' ? titleResult.value.title?.title : undefined
-      return {
-        id: record.header.id,
-        model: '',
-        status: record.live ? 'running' : 'persisted',
-        ...(title === undefined ? {} : { title }),
-        live: record.live,
-        persisted: record.persisted,
-        createdAt: record.header.createdAt,
-      }
+    // Live sessions also carry their first-prompt title snapshot once the
+    // title provider has generated one.
+    const liveIds = liveRows.map(row => SessionId(row.id))
+    const liveTitles = await query.readTitleSnapshots(liveIds)
+    const live = liveRows.map((row, index) => {
+      const result = liveTitles[index]
+      const title = result?.status === 'fulfilled' ? result.value.title?.title : undefined
+      return title === undefined || title === '' ? row : { ...row, title }
     })
-    return rows
+    const corpus: SessionEntry[] = newest
+      .filter(record => !liveIds.includes(record.header.id))
+      .map((record, index) => {
+        const titleResult = titles[index]
+        const title = titleResult?.status === 'fulfilled' ? titleResult.value.title?.title : undefined
+        return {
+          id: record.header.id,
+          model: '',
+          status: record.live ? 'running' : 'persisted',
+          ...(title === undefined ? {} : { title }),
+          live: record.live,
+          persisted: record.persisted,
+          createdAt: record.header.createdAt,
+        }
+      })
+    return [...live, ...corpus]
   } catch {
     return [...liveRows]
   }

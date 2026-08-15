@@ -12,7 +12,7 @@ import { createElement } from 'react'
 import { describe, expect, it, afterEach } from 'vitest'
 import { render } from 'ink'
 import stringWidth from 'string-width'
-import { App, permissionColor, permissionLabel, thinkingGradientColor, traceLineColor } from '../src/render'
+import { App, permissionColor, permissionLabel, traceLineColor } from '../src/render'
 import type { TuiHost } from '../src/render'
 import { createTuiStore } from '../src/store'
 import type { TuiStore } from '../src/store'
@@ -168,7 +168,7 @@ class Screen {
 
 /** 1-based row of the composer input line in the last frame. */
 function composerInputRow(lines: string[]): number {
-  const index = lines.findIndex(line => line.trimStart().startsWith('› '))
+  const index = lines.findIndex(line => line.trimStart().startsWith('›'))
   if (index === -1) throw new Error(`composer input row not found in ${JSON.stringify(lines.slice(-12))}`)
   return index + 1
 }
@@ -926,32 +926,8 @@ describe('Ink 7 full-screen render', () => {
     }
   })
 
-  it('sweeps the muted Claude-style gradient across the live Thinking letters only', async () => {
-    const { store, capture, unmount } = await mount([{ kind: 'user', id: 1, text: 'hi' }])
-    try {
-      const snapshot = store.getSnapshot()
-      store.set({
-        ...snapshot,
-        version: snapshot.version + 1,
-        busy: true,
-        live: { text: '', think: '正在推理', thinkSince: Date.now() },
-      })
-      await new Promise<void>(resolve => setTimeout(resolve, 400))
-      const lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('Thinking'))).toBe(true)
-      // The wave palette is a pure mapping: dark gray → gray → bright white → cyan.
-      expect(thinkingGradientColor(0, 0)).toBe('blackBright')
-      expect(thinkingGradientColor(1, 0)).toBe('gray')
-      expect(thinkingGradientColor(2, 0)).toBe('whiteBright')
-      expect(thinkingGradientColor(3, 0)).toBe('cyan')
-      expect(thinkingGradientColor(0, 1)).toBe('gray') // the wave moves per tick
-    } finally {
-      unmount()
-    }
-  })
-
   it('reflows to a shrunken terminal without rows bleeding into each other', async () => {
-    const { capture, unmount } = await mount()
+    const { capture, unmount, type } = await mount()
     try {
       capture.columns = 30
       capture.rows = 20
@@ -967,6 +943,19 @@ describe('Ink 7 full-screen render', () => {
       // The welcome panel's borders stay on one intact row each.
       expect(lines.some(line => line.trimStart().startsWith('┏') && line.trimEnd().endsWith('┓'))).toBe(true)
       expect(lines.some(line => line.trimStart().startsWith('┗') && line.trimEnd().endsWith('┛'))).toBe(true)
+      // Typing '/' opens the palette; the palette must respect its height
+      // budget so it can never overwrite the composer row below it, and the
+      // composer row itself must show the draft.
+      await type('/')
+      const afterSlash = lastFrameLines(capture.output)
+      const composerRows = afterSlash.filter(line => line.trimStart().startsWith('›'))
+      expect(composerRows.length).toBeGreaterThan(0)
+      expect(composerRows.at(-1)).toContain('/')
+      // Budgeted rows: title + hint + (height - 2) items, clamped to the
+      // available space above the fixed chrome.
+      const fixed = 4 + 1 + 1 + 1 + 3
+      const maxPalette = Math.max(0, 20 - fixed - 1)
+      expect(afterSlash.filter(line => line.trimStart().startsWith('/') || line.includes('命令（')).length).toBeLessThanOrEqual(maxPalette)
     } finally {
       unmount()
     }
