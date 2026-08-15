@@ -476,6 +476,11 @@ function subscribe(
   }
   const off = ctx.on('internal/dispatch', (_mode, eventName, args) => {
     if (eventName === 'session/event') {
+      // Only the surface's own session feeds the fold: a foreign agent's
+      // events (a leaked lifecycle or a fork racing a switch) must never
+      // scramble the visible transcript or collide on node ids.
+      const session = (args as unknown[])[0] as Session | undefined
+      if (session !== surface.agent.session) return
       const event = (args as unknown[])[1] as SessionEvent
       surface.fold = applyEvent(surface.fold, event, surface.scratch)
       enrichToolCards(ctx, event, surface.fold)
@@ -484,8 +489,11 @@ function subscribe(
       return
     }
     if (eventName === 'agent/status') {
-      const payload = (args as unknown[])[0] as { status?: unknown } | undefined
-      surface.busy = payload?.status === 'running'
+      // Only the surface's own agent drives the busy flag; a leaked agent
+      // running its loop must not mark this surface busy.
+      const payload = (args as unknown[])[0] as { agent?: unknown; status?: unknown } | undefined
+      if (payload?.agent !== surface.agent) return
+      surface.busy = payload.status === 'running'
       publish()
     }
   }, { global: true })
@@ -671,6 +679,11 @@ async function boot(
   // creating an Agent so its scoped tools and adapters are not half-composed.
   await ctx.get('loader')?.await()
   const created = await createAgent(ctx, process.cwd())
+  // Handle of the surface's CURRENT agent. Switches dispose THIS handle before
+  // replacing it — disposing the boot-time `created.handle` on every switch
+  // leaked each intermediate agent (multiple live sessions the /sessions
+  // panel shows as inert live rows, which can never be resumed again).
+  let currentHandle: AgentHandle = created.handle
   const hostCommands = ctx.get('commands')?.list(created.agent) ?? []
   const commandEntries = hostCommands.map(command => ({
     name: command.name,
@@ -873,12 +886,14 @@ async function boot(
     try {
       const next = await createAgent(ctx, surface.cwd)
       unsubscribe()
-      await created.handle.dispose()
+      await currentHandle.dispose()
+      currentHandle = next.handle
       surface.fold = initialState()
       surface.scratch = createScratch()
       surface.agent = next.agent
       surface.selection = next.ref
       surface.currentModel = next.selection.model
+      surface.busy = false
       surface.pendingApproval = null
       surface.pendingQuestion = null
       surface.feedback = new Map()
@@ -909,7 +924,10 @@ async function boot(
         setup: (agentCtx) => { installModelSelection(agentCtx, ref) },
       })
       unsubscribe()
-      await created.handle.dispose()
+      await currentHandle.dispose()
+      // `resume` returns the AgentHandle itself (agent + dispose); the
+      // freshly resumed handle becomes the surface's current handle.
+      currentHandle = next
       // Fold from the authoritative corpus read (persistence repair and
       // replay validation included) so the resumed transcript shows the
       // complete history; the agent's in-memory log is the fallback.
@@ -928,6 +946,7 @@ async function boot(
       surface.agent = next.agent
       surface.selection = ref
       surface.currentModel = next.agent.options.model ?? surface.currentModel
+      surface.busy = false
       surface.pendingApproval = null
       surface.pendingQuestion = null
       surface.feedback = new Map()
@@ -1009,7 +1028,7 @@ async function boot(
             while (cut < events.length && events[cut]?.type !== 'turn/start') cut++
             const selection: ModelSelection = surface.selection.current ?? ctx.agentDefaultModel.currentSelection()
             const ref: ModelSelectionRef = { current: selection, assembled: undefined }
-            await ctx.agents.create({
+            const fork = await ctx.agents.create({
               sessionId: SessionId(`session-${randomUUID()}`),
               seed: events.slice(0, cut),
               meta: { cwd: surface.cwd, parentSession: surface.agent.id, seedLength: cut },
@@ -1020,6 +1039,10 @@ async function boot(
               },
               setup: (agentCtx) => { installModelSelection(agentCtx, ref) },
             })
+            // A fork is a persisted artifact to resume from /sessions, not a
+            // second live surface: dispose its handle right away so exactly
+            // ONE agent (the surface's) stays live at any time.
+            await fork.dispose()
             return null
           } catch (error) {
             return `分叉失败：${error instanceof Error ? error.message : String(error)}`
