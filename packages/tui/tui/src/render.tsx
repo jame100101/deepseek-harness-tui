@@ -75,7 +75,6 @@ interface Copy {
   generating: string
   callingTools: string
   awaiting: string
-  scrollBanner: (count: number) => string
   turn: string
   effort: string
   effortChanged: (effort: string) => string
@@ -164,7 +163,6 @@ const COPY: Record<Locale, Copy> = {
     generating: 'Generating',
     callingTools: 'Calling tools',
     awaiting: 'Awaiting reply',
-    scrollBanner: count => `↑ ${count} 条更新被隐藏 · PageDown/End 回到最新`,
     turn: '轮',
     effort: 'effort',
     effortChanged: effort => `推理等级 → ${effort}`,
@@ -250,7 +248,6 @@ const COPY: Record<Locale, Copy> = {
     generating: 'Generating',
     callingTools: 'Calling tools',
     awaiting: 'Awaiting reply',
-    scrollBanner: count => `↑ ${count} newer line${count === 1 ? '' : 's'} hidden · PageDown/End to return`,
     turn: 'turn',
     effort: 'effort',
     effortChanged: effort => `reasoning effort → ${effort}`,
@@ -614,7 +611,7 @@ function Header(props: {
   )
 }
 
-/** The transcript viewport with the hidden-lines banner (DamnatioX semantics). */
+/** The transcript viewport with the floating back-to-bottom button. */
 function Transcript(props: {
   lines: readonly TranscriptLine[]
   height: number
@@ -639,11 +636,6 @@ function Transcript(props: {
       paddingX={1}
       justifyContent="flex-end"
     >
-      {viewport.offset > 0 ? (
-        <Text key="scroll-banner" dimColor wrap="truncate">
-          {fitDisplayText(COPY[props.locale].scrollBanner(viewport.offset), Math.max(1, props.width - 2))}
-        </Text>
-      ) : null}
       {viewport.lines.map((line, index) => (
         // Index keys: scrolling reorders the visible rows every wheel tick,
         // and keyed reordering through Ink's reconciler can accumulate stale

@@ -27,10 +27,10 @@ export interface TranscriptViewport {
 }
 
 /**
- * Slice the rendered transcript lines to one viewport. When the offset is
- * positive, the first viewport row is reserved for the "newer lines hidden"
- * banner, so one fewer content line shows. `bottomReserved` rows (a floating
- * back-to-bottom button) pin to the viewport bottom outside the scroll area.
+ * Slice the rendered transcript lines to one viewport. The offset counts
+ * hidden lines from the bottom (offset 0 = follow mode). `bottomReserved`
+ * rows (a floating back-to-bottom button) pin to the viewport bottom
+ * outside the scroll area.
  * @param lines - all rendered transcript lines.
  * @param height - the viewport height in rows.
  * @param requestedOffset - the requested scroll offset (hidden bottom lines).
@@ -49,14 +49,10 @@ export function selectTranscriptViewport(
   const normalizedOffset = Number.isFinite(requestedOffset)
     ? Math.max(0, Math.floor(requestedOffset))
     : 0
-  const scrollingHeight = Math.max(1, capacity - 1)
-  const maximumOffset = lines.length > capacity
-    ? Math.max(0, lines.length - scrollingHeight)
-    : 0
+  const maximumOffset = Math.max(0, lines.length - capacity)
   const offset = Math.min(normalizedOffset, maximumOffset)
-  const contentHeight = Math.max(1, capacity - (offset > 0 ? 1 : 0))
   const end = Math.max(0, lines.length - offset)
-  const start = Math.max(0, end - contentHeight)
+  const start = Math.max(0, end - capacity)
   return {
     lines: lines.slice(start, end),
     offset,

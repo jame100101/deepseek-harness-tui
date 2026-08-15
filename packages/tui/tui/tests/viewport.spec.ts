@@ -7,20 +7,20 @@ import type { TranscriptLine } from '../src/viewport'
 const line = (key: string, text = key): TranscriptLine => ({ key, text })
 
 describe('selectTranscriptViewport', () => {
-  it('follows the newest lines at offset 0 with no banner row', () => {
+  it('follows the newest lines at offset 0', () => {
     const lines = Array.from({ length: 10 }, (_, index) => line(`l${index}`))
     const viewport = selectTranscriptViewport(lines, 5, 0)
     expect(viewport.offset).toBe(0)
-    expect(viewport.maximumOffset).toBe(6) // 10 lines - (5 - 1) scrolling height
+    expect(viewport.maximumOffset).toBe(5) // 10 lines - 5 content rows
     expect(viewport.lines.map(entry => entry.text)).toEqual(['l5', 'l6', 'l7', 'l8', 'l9'])
   })
 
-  it('hides lines from the bottom as the offset grows and reserves the banner row', () => {
+  it('hides lines from the bottom as the offset grows', () => {
     const lines = Array.from({ length: 10 }, (_, index) => line(`l${index}`))
     const viewport = selectTranscriptViewport(lines, 5, 3)
     expect(viewport.offset).toBe(3)
-    // 5 rows minus the banner row = 4 content rows; the last 3 lines hidden.
-    expect(viewport.lines.map(entry => entry.text)).toEqual(['l3', 'l4', 'l5', 'l6'])
+    // The last 3 lines hidden; the window shows the 5 before them.
+    expect(viewport.lines.map(entry => entry.text)).toEqual(['l2', 'l3', 'l4', 'l5', 'l6'])
   })
 
   it('clamps the offset to the maximum and never hides the first line', () => {
@@ -41,13 +41,13 @@ describe('selectTranscriptViewport', () => {
     const lines = Array.from({ length: 10 }, (_, index) => line(`l${index}`))
     const viewport = selectTranscriptViewport(lines, 5, 0, 1)
     expect(viewport.lines.map(entry => entry.text)).toEqual(['l6', 'l7', 'l8', 'l9'])
-    expect(viewport.maximumOffset).toBe(7)
+    expect(viewport.maximumOffset).toBe(6)
   })
 
   it('shrinks the content window further while scrolled with a bottom row reserved', () => {
     const lines = Array.from({ length: 10 }, (_, index) => line(`l${index}`))
     const viewport = selectTranscriptViewport(lines, 5, 2, 1)
-    expect(viewport.lines.map(entry => entry.text)).toEqual(['l5', 'l6', 'l7'])
+    expect(viewport.lines.map(entry => entry.text)).toEqual(['l4', 'l5', 'l6', 'l7'])
   })
 })
 

@@ -372,23 +372,22 @@ describe('Ink 7 full-screen render', () => {
     const { capture, unmount, type } = await mount(nodes)
     try {
       let lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('条更新被隐藏'))).toBe(false)
-      // One wheel-up tick hides 3 lines and shows the banner.
+      expect(lines.some(line => line.includes('▼ 回到底部'))).toBe(false)
+      // One wheel-up tick hides 3 lines and pins the back button.
       await type('\x1b[<64;10;5M')
       lines = lastFrameLines(capture.output)
-      console.log('WHEEL FRAME:', JSON.stringify(lines))
-      expect(lines.some(line => line.includes('↑ 3 条更新被隐藏'))).toBe(true)
+      expect(lines.some(line => line.includes('▼ 回到底部'))).toBe(true)
       expect(lines.some(line => line.includes('▸ 第39行'))).toBe(false)
       // A wheel-down tick brings the newest lines back.
       await type('\x1b[<65;10;5M')
       lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('条更新被隐藏'))).toBe(false)
+      expect(lines.some(line => line.includes('▼ 回到底部'))).toBe(false)
       expect(lines.some(line => line.includes('▸ 第39行'))).toBe(true)
       // PgDn keeps working as the follow-mode accelerator.
       await type('\x1b[<64;10;5M')
       await type('\x1b[6~')
       lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('条更新被隐藏'))).toBe(false)
+      expect(lines.some(line => line.includes('▼ 回到底部'))).toBe(false)
     } finally {
       unmount()
     }
@@ -854,7 +853,7 @@ describe('Ink 7 full-screen render', () => {
       await new Promise<void>(resolve => setTimeout(resolve, 320))
       let lines = lastFrameLines(capture.output)
       expect(lines.some(line => line.includes('▼ 回到底部'))).toBe(true)
-      expect(lines.some(line => line.includes('↑ 3 条更新被隐藏'))).toBe(true)
+      expect(lines.some(line => line.includes('▸ 第39行'))).toBe(false)
       // The button pins to the last transcript row: 30-row terminal, 4-row
       // header, 20-row transcript → 1-based terminal row 24. A left-press
       // there returns to the newest lines.
@@ -862,7 +861,6 @@ describe('Ink 7 full-screen render', () => {
       await new Promise<void>(resolve => setTimeout(resolve, 320))
       lines = lastFrameLines(capture.output)
       expect(lines.some(line => line.includes('▼ 回到底部'))).toBe(false)
-      expect(lines.some(line => line.includes('条更新被隐藏'))).toBe(false)
       expect(lines.some(line => line.includes('▸ 第39行'))).toBe(true)
     } finally {
       unmount()
