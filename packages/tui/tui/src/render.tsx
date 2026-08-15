@@ -621,8 +621,15 @@ function nodeLines(
       const head = wrapText(marker + (expanded ? `✓ Thinking ${durationLabel} ▼` : `✓ Thinking ${durationLabel} ▶`), width).map(text => ({
         text, color: 'magenta', dim: !expanded,
       }))
+      // The `  │ ` prefix consumes 4 cells and is added AFTER wrapping, so
+      // the wrap budget must reserve those 4 cells: wrapping the raw text at
+      // width - 2 made each budget-filling segment 2 cells wider than the
+      // content area, and Ink's wrap machinery split the row right after the
+      // prefix — the vertical bar ended up alone on its row while the text
+      // moved to a bare row below it. With the prefix inside the budget,
+      // every body row keeps its own bar and never overflows.
       const body = expanded
-        ? wrapTextWords(sanitizeTerminalText(node.text), width - 2).map(text => ({ text: `  │ ${text}`, color: 'magenta', dim: true }))
+        ? wrapTextWords(sanitizeTerminalText(node.text), width - 4).map(text => ({ text: `  │ ${text}`, color: 'magenta', dim: true }))
         : []
       return withKey([...head, ...body])
     }

@@ -1044,6 +1044,43 @@ describe('Ink 7 full-screen render', () => {
     }
   })
 
+  it('keeps every expanded Thinking body row behind its own vertical bar', async () => {
+    // A spacer-less CJK body forces budget-filling hard wraps. The `  │ `
+    // prefix used to be added AFTER wrapping, so each full segment made the
+    // line 2 cells WIDER than the content area: Ink's measure/wrap then
+    // split the row right after the prefix, leaving the vertical bar alone
+    // on its row (empty rows between the body rows) — the bar vanished and
+    // only text remained. The prefix now sits inside the wrap budget, so the
+    // body rows stay contiguous and every row starts with its own bar.
+    const { store, capture, unmount } = await mount([{
+      kind: 'think', id: 1, text: `${'思'.repeat(200)} 结尾`, durationMs: 1,
+    }])
+    try {
+      const snapshot = store.getSnapshot()
+      store.set({
+        ...snapshot,
+        version: snapshot.version + 1,
+        settings: snapshot.settings === null ? snapshot.settings : {
+          ...snapshot.settings,
+          general: { ...snapshot.settings.general, thinking: 'expanded' },
+        },
+      })
+      await new Promise<void>(resolve => setTimeout(resolve, 320))
+      const lines = lastFrameLines(capture.output)
+      // Every body row carries the bar…
+      const bodyRows = lines.map((line, index) => ({ line, index })).filter(entry => entry.line.includes('思'))
+      expect(bodyRows.length).toBeGreaterThan(2)
+      expect(bodyRows.every(entry => entry.line.includes('  │ '))).toBe(true)
+      // …and the body rows are CONTIGUOUS: the split-after-prefix bug
+      // interleaved an empty row after every body row.
+      for (let position = 1; position < bodyRows.length; position++) {
+        expect(bodyRows[position]?.index).toBe((bodyRows[position - 1]?.index ?? 0) + 1)
+      }
+    } finally {
+      unmount()
+    }
+  })
+
   it('reflows to a shrunken terminal without rows bleeding into each other', async () => {
     const { capture, unmount, type } = await mount()
     try {
