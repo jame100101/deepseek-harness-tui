@@ -403,7 +403,7 @@ function wrapCells(text: string, width: number): string[] {
  * @param width - available terminal cells.
  * @param model - the active model id.
  * @param cwd - the workspace path.
- * @param sessionId - the session id (first 8 chars shown).
+ * @param sessionId - the full session id.
  * @param locale - UI chrome language.
  * @returns the rendered lines.
  */
@@ -419,14 +419,14 @@ export function welcomeBlock(width: number, model: string, cwd: string, sessionI
     ? [
         `Model: ${model}`,
         `Workspace: ${cwd}`,
-        `Session: ${sessionId.slice(0, 8)}`,
+        `Session: ${sessionId}`,
         '',
         'Type a task below; /help lists commands.',
       ]
     : [
         `Model: ${model}`,
         `Workspace: ${cwd}`,
-        `Session: ${sessionId.slice(0, 8)}`,
+        `Session: ${sessionId}`,
         '',
         '在底部输入任务；输入 /help 查看命令。',
       ]
