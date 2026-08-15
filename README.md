@@ -138,7 +138,8 @@ registered host commands, and unknown text becomes a model message.
 | `g` / `b` (selection mode) | 👍 / 👎 feedback on the selected assistant message |
 | `Esc` | leave selection mode / close panel / cancel (busy) |
 | `PgUp` / `PgDn`, `End`, `Ctrl+Home` | page the transcript |
-| Mouse wheel | scroll transcript (3 lines/tick) or open panel |
+| Mouse wheel | scroll the transcript (3 lines/tick) or the open panel |
+| Right-edge scrollbar | browser-style `█` thumb on a `│` rail in its own gutter column — click or drag anywhere on the rail to jump straight to that position of the history (2-cell click target) |
 | Mouse click | floating centered back-to-bottom button (appears when scrolled up) |
 | Panel keys | `↑`/`↓` select · `Enter` activate · `q` close · `Tab` switch settings page · `c` edit a plugin's config (plugins page) |
 
@@ -172,9 +173,12 @@ registered host commands, and unknown text becomes a model message.
 
 ### Sessions & settings
 
-- **Single agent per process.** `/new` swaps to a fresh session; `/sessions`
+- **One live session at a time.** `/new` swaps to a fresh session; `/sessions`
   resumes any persisted one (the transcript is replayed from the authoritative
-  log, so the complete history comes back).
+  log, so the complete history comes back). Each switch disposes the previous
+  agent before the surface moves on — the old session becomes a resumable
+  history record instead of a second live session. `/fork` creates a persisted
+  fork to resume from `/sessions`, never a second live surface.
 - **Settings (4 pages):** General (`busyEnter` queue/steer, Thinking
   collapsed/expanded, theme dark/light, locale zh/en), Models (catalog +
   adapter reasoning levels), Plugins (per-namespace top-level field editor:
@@ -182,7 +186,9 @@ registered host commands, and unknown text becomes a model message.
   secret slots, credential refs, loader tree).
 - **Plugin toggle:** `Enter` on a plugin row flips it — the switch writes
   `$DSH_HOME/profiles/<name>/cordis.patch.yml` and the launcher's HMR watch
-  hot-applies it; the `●`/`○` dot flips live.
+  hot-applies it; the row's `●`/`○` dot and bright/dim state flip as soon as
+  the hot-apply lands (the UI polls the loader tree until then, and the panel
+  refreshes on every open).
 - **Credentials:** `Enter` on a credential row edits the value (masked, supports
   removal); never displayed.
 
@@ -210,13 +216,13 @@ pnpm dsh --profile tui
 | `fold.ts` / `types.ts` | Event-sourced fold: `initialState`, `applyEvent`, `foldFromLog` (resume replay), `anchorRetry`; `TuiNode` = user/context/assistant/think/tool/retry/status. |
 | `store.ts` | `createTuiStore` — getSnapshot/subscribe/set, consumed via `useSyncExternalStore`. |
 | `render.tsx` | The Ink 7 app: full-screen frame (`alternateScreen: true`), header, transcript viewport, permission bar, composer, status bar, panels, takeover, palette; `runInk(store, host)`. |
-| `viewport.ts` | Pure cell-width math: `selectTranscriptViewport` (bottom-anchored scroll offset), `selectPanelViewport`, `selectComposerLayout` (input wrap + caret line). |
+| `viewport.ts` | Pure cell-width math: `selectTranscriptViewport` (bottom-anchored scroll offset), `selectPanelViewport`, `selectScrollbar` (right-edge thumb/rail geometry + click-row → offset mapping), `selectComposerLayout` (input wrap + caret line). |
 | `welcome-banner.ts` | Immutable whale art (`WHALE_ART_RAW` raw multi-line string, `█ ▓ ▒ ░` only) + precomputed 3D title rows (`buildTitleRows`); degrade ladder, never wraps. |
 | `plain.ts` | Line-driven fallback renderer + shared pure helpers: markdown lines/runs, GFM tables, stats strip, help text, welcome card. |
 | `card-project.ts` | `presentCall`/`presentResult` render-intent projection into terminal cards. |
 | `settings-data.ts` | Panel row builders for the four settings pages, jobs, subagents, workflows, sessions. |
 | `patch-toggle.ts` | Plugin on/off: edits `profiles/<name>/cordis.patch.yml` (bare ids, `[]` restore) for HMR hot-apply. |
-| `mouse.ts` | SGR wheel/click parsing (`?1000h`/`?1006h` capture) for in-app scrolling and the back-to-bottom button. |
+| `mouse.ts` | SGR wheel/click/drag parsing (`?1000h`/`?1002h`/`?1006h` capture) for in-app scrolling, the back-to-bottom button, and the right-edge scrollbar. |
 | `csi-arbiter.ts` | Split-ESC arbitration so lone `Esc` / split arrow keys never corrupt input. |
 | `sanitize.ts` | Strips CSI/OSC/control sequences from model output, tool results, and pastes. |
 
@@ -229,6 +235,10 @@ pnpm dsh --profile tui
   interactive questions.
 - **Deterministic resume:** `/sessions` resume replays `foldFromLog` over the
   authoritative corpus read (persistence repair included).
+- **One live session at a time:** switches dispose the current agent's handle
+  before the surface moves on, and the event subscription filters by subject —
+  only the surface's own session events feed the fold and only its own agent
+  status drives the busy flag.
 - **Caret & IME:** the composer caret is anchored through Ink's own
   `useCursor`/`measureElement` (no manual CUP writes).
 - **Resize-safe:** the root frame fills exactly the physical rows; narrow
@@ -303,14 +313,14 @@ pnpm exec dsh --profile tui   # 构建产物启动（约 2.7s，推荐日常使�
 | `/jobs` | 后台任务面板（Enter 杀掉选中任务，每秒轮询） |
 | `/subagents` | 子代理树面板（深度缩进、活动状态） |
 | `/workflows` | workflow 运行进度面板（阶段/agent 数/日志/错误） |
-| `/sessions [过滤]` | 活动 + 持久化会话列表，Enter 恢复（完整历史重放） |
+| `/sessions [过滤]` | 活动 + 持久化会话列表，Enter 恢复（完整历史重放；切换后旧会话回到历史记录） |
 | `/effort off\|high\|max` | 设置/清除当前路由的推理力度 |
 | `/goal` | 当前目标详情（阶段/轮次/目标文本） |
 | `/rename <标题>` | 重命名会话标题 |
 | `/workspace <目录>` | 切换工作目录（对本次及之后会话生效） |
 | `/attach <图片>` | 附加 png/jpg/gif/webp 到下一消息 |
-| `/fork [seq]` | 在最后完成回合（或包含 seq 的回合）处分叉会话 |
-| `/new` | 开始新会话 |
+| `/fork [seq]` | 在最后完成回合（或包含 seq 的回合）处分叉——分叉作为持久化会话出现在 `/sessions`，可随时恢复 |
+| `/new` | 开始新会话（旧会话回到历史记录） |
 | `/quit` / `/exit` | 保存并退出 |
 
 `/` 会弹出命令面板（↑↓ 选择、Enter 执行、Tab 补全、Esc 取消）。
@@ -330,6 +340,7 @@ pnpm exec dsh --profile tui   # 构建产物启动（约 2.7s，推荐日常使�
 | `Esc` | 退出选择模式 / 关闭面板 / 取消（忙时） |
 | `PgUp` / `PgDn`、`End`、`Ctrl+Home` | 转录翻页 |
 | 滚轮 | 滚动转录（3 行/格）或打开的面板 |
+| 右侧滚动条 | 浏览器式独立右缘列（`█` 滑块 + `│` 轨道）：点击/按住拖拽轨道直接跳到对应历史位置（2 格点击区） |
 | 鼠标点击 | 上翻时点击居中反色"回到底部"悬浮按钮 |
 | 面板内按键 | `↑`/`↓` 选择 · `Enter` 激活 · `q` 关闭 · `Tab` 换设置页 · `c` 编辑插件配置（插件页） |
 
@@ -351,7 +362,7 @@ pnpm exec dsh --profile tui   # 构建产物启动（约 2.7s，推荐日常使�
 
 ### 技术架构
 
-`dsh-tui` 是 **Cordis 进程内插件**（`@deepseek-ai/dsh-tui`），仅在 `--profile tui` 的 bundle 中加载。启动后创建**一个进程级 Agent**，通过 `internal/dispatch` 全局通道订阅 `session/event` 与 `agent/status`，用 `fold.ts` 把事件源会话日志折叠为 `TuiNode` 树（user/context/assistant/think/tool/retry/status），发布到 `store.ts` 的 `useSyncExternalStore` 快照。渲染层是 **Ink 7 + React 19** 的全屏帧（`alternateScreen: true`）：`render.tsx` 负责 header / 转录视窗 / 权限栏 / 输入框 / 状态栏 / 面板 / takeover / 命令面板；`viewport.ts` 用终端 cell 宽度做窗口化与光标行计算；`welcome-banner.ts` 保存原始多行鲸鱼横幅；`sanitize.ts` 清洗所有进入界面的控制序列。
+`dsh-tui` 是 **Cordis 进程内插件**（`@deepseek-ai/dsh-tui`），仅在 `--profile tui` 的 bundle 中加载。启动后创建**一个进程级 Agent**，且**同一时刻只有一个活动会话**：`/new` 与恢复会话都会先销毁旧 agent 再切换（旧会话回到历史记录，`/fork` 生成的是可恢复的持久化分叉）。通过 `internal/dispatch` 全局通道订阅 `session/event` 与 `agent/status`（**按主体过滤**：只有当前 surface 自己的事件才折叠进转录、才驱动 busy 标志），用 `fold.ts` 把事件源会话日志折叠为 `TuiNode` 树（user/context/assistant/think/tool/retry/status），发布到 `store.ts` 的 `useSyncExternalStore` 快照。渲染层是 **Ink 7 + React 19** 的全屏帧（`alternateScreen: true`）：`render.tsx` 负责 header / 转录视窗 / 权限栏 / 输入框 / 状态栏 / 面板 / takeover / 命令面板；`viewport.ts` 用终端 cell 宽度做窗口化、右侧滚动条几何与光标行计算；`welcome-banner.ts` 保存原始多行鲸鱼横幅；`sanitize.ts` 清洗所有进入界面的控制序列。
 
 三条硬保证：**① 模型可见 ⟺ 落盘**（界面只投影会话日志）；**② KV-cache 安全**（不注册任何工具/提示段/Provider，请求信封与无界面组合字节一致）；**③ 确定性恢复**（resume 从权威日志重放完整历史）。光标由 Ink 自身 `useCursor`/`measureElement` 锚定，无手工光标序列；窗口 resize 安全（帧恰好铺满物理行、横幅降级不折行、预算钳制保证输入框永不被覆盖）。
 

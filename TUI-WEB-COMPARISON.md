@@ -1,6 +1,6 @@
 # dsh-tui 与 Web 版功能对比清单
 
-> 生成时间：本文件随 TUI 迭代更新。对比基准：`apps/web` + `packages/client/*`（web-app profile）与 `packages/tui/tui`（tui profile，本仓库 commit `c5cc575`「width-safe whale banner」）。
+> 生成时间：本文件随 TUI 迭代更新。对比基准：`apps/web` + `packages/client/*`（web-app profile）与 `packages/tui/tui`（tui profile，本仓库 commit `c399b75`「dispose the CURRENT agent on session switches」）。
 > 标记说明：✅ 已对齐 · 🟡 部分对齐（能力存在但交互/细节弱于 Web）· ❌ 缺失 · ➕ TUI 独有。
 
 ---
@@ -9,7 +9,7 @@
 
 | 维度 | Web | TUI | 状态 |
 | --- | --- | --- | --- |
-| 会话模型 | 多会话并行，侧栏切换 | 单会话进程级（/new 换新，/sessions 恢复） | 🟡 |
+| 会话模型 | 多会话并行，侧栏切换 | 单会话进程级（同一时刻仅一个 live：/new 换新、/sessions 恢复，切换即销毁旧 agent、旧会话回到历史记录） | 🟡 |
 | 布局 | 三栏可拖拽（sidebar 56–420 / center ≥640 / details） | 全屏单栏（header / transcript / permission / composer / status） | ❌ |
 | 首屏/品牌 | onboarding 流程 + 品牌页 | **宽度安全鲸鱼横幅**：13 行纯 `█ ▓ ▒ ░` 单格字符鲸鱼 + 6 行 3D `DEEPSEEK HARNESS` 标题（`█` 字形 + `░` 阴影）；Cascadia Mono / JetBrains Mono / Consolas 原生字形、无 fallback；窄终端降级为欢迎卡片、绝不折行 | ➕ |
 | 终端标签标题 | 浏览器标题 | `🐋 DeepSeek Harness`（OSC 设置，退出时恢复原标题；窄/legacy 终端降级 ✦ 品牌字形） | ➕ |
@@ -35,10 +35,10 @@
 
 | 功能 | Web | TUI | 状态 |
 | --- | --- | --- | --- |
-| 会话列表 | 侧栏：搜索/排序/未读 | /sessions：live+持久化 50 条，支持过滤 | 🟡 |
-| 新建/切换会话 | 点击 | /new、/sessions 恢复（恢复可见完整历史） | ✅ |
+| 会话列表 | 侧栏：搜索/排序/未读 | /sessions：live+持久化 50 条，支持过滤（live 恒为当前 surface 一个） | 🟡 |
+| 新建/切换会话 | 点击 | /new、/sessions 恢复（切换销毁旧 agent，恢复可见完整历史） | ✅ |
 | 重命名 | 侧栏内联重命名 | /rename | ✅ |
-| 分叉 | 侧栏操作 | /fork [seq] | 🟡 |
+| 分叉 | 侧栏操作 | /fork [seq]（分叉为持久化会话，在 /sessions 中恢复，不产生第二个 live） | 🟡 |
 | 归档/删除 | 支持 | 无（core 无删除面） | ❌ |
 | 工作区切换 | 工作区浏览器（树、创建/重命名/归档、拖拽） | /workspace <路径> | 🟡 |
 | 会话标题自动生成 | title LLM 插件 | 同插件（持久化标题在 /sessions 显示） | ✅ |
@@ -78,7 +78,7 @@
 | General | 主题/语言等 | busyEnter/thinking/theme/locale 切换 | 🟡 |
 | Models | 模型目录 + 推理等级 + 自定义 provider + API key 引导弹窗 + 模型列表编辑器（增删/容量） | 模型列表 + 适配器推理等级 + 凭据读写（不回显） | 🟡 |
 | Plugins 设置 | 每命名空间结构化卡片（agent-loop/bash/shell 等，字段级表单） | 插件配置编辑器：顶层字段（bool 切换 / string/number/secret 编辑） | 🟡 |
-| 插件开关 | 无运行时开关 UI | **Enter 切换开关，实时写 cordis.patch.yml，HMR 热生效，●/○ 实心空心即时翻转** | ➕ |
+| 插件开关 | 无运行时开关 UI | **Enter 切换开关，实时写 cordis.patch.yml，HMR 热生效；热应用落地后 ●/○ 与亮/灰即时翻转（UI 轮询 loader 树直至落地，面板每次打开也刷新）** | ➕ |
 | 插件清单 | PluginInventory tab | inventory 页（命名空间/密钥槽/凭据引用/loader 树） | ✅ |
 | Jobs | 任务列表操作（顶部栏） | /jobs（Enter 杀任务，每秒轮询） | ✅ |
 | Subagents | 目录动作 + 只读子代理会话视图 | /subagents 树（深度缩进、活动状态） | 🟡 |
