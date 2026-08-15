@@ -924,6 +924,31 @@ describe('Ink 7 full-screen render', () => {
     }
   })
 
+  it('wraps the expanded Thinking body at word boundaries, not mid-word', async () => {
+    const { store, capture, unmount } = await mount([{
+      kind: 'think', id: 1, text: `${'x'.repeat(95)} hello world`, durationMs: 1,
+    }])
+    try {
+      const snapshot = store.getSnapshot()
+      store.set({
+        ...snapshot,
+        version: snapshot.version + 1,
+        settings: snapshot.settings === null ? snapshot.settings : {
+          ...snapshot.settings,
+          general: { ...snapshot.settings.general, thinking: 'expanded' },
+        },
+      })
+      await new Promise<void>(resolve => setTimeout(resolve, 320))
+      const lines = lastFrameLines(capture.output)
+      // The word breaks only at spaces: 'hello world' stays whole on its
+      // own row instead of splitting 'llo' off mid-word.
+      expect(lines.some(line => line.includes('  │ hello world'))).toBe(true)
+      expect(lines.some(line => line.includes('  │ llo'))).toBe(false)
+    } finally {
+      unmount()
+    }
+  })
+
   it('reflows to a shrunken terminal without rows bleeding into each other', async () => {
     const { capture, unmount, type } = await mount()
     try {

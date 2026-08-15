@@ -471,6 +471,47 @@ function wrapText(text: string, width: number): string[] {
   return lines
 }
 
+/** Word-aware hard wrap for prose: breaks on spaces, only over-long words break by cells. */
+function wrapTextWords(text: string, width: number): string[] {
+  const lines: string[] = []
+  for (const source of text.split('\n')) {
+    const words = source.split(/\s+/).filter(word => word !== '')
+    if (words.length === 0) {
+      lines.push('')
+      continue
+    }
+    let current = ''
+    let currentWidth = 0
+    for (const word of words) {
+      const wordWidth = stringWidth(word)
+      if (current === '') {
+        if (wordWidth > width) {
+          lines.push(...wrapText(word, width))
+          continue
+        }
+        current = word
+        currentWidth = wordWidth
+        continue
+      }
+      if (currentWidth + 1 + wordWidth <= width) {
+        current += ` ${word}`
+        currentWidth += 1 + wordWidth
+      } else {
+        lines.push(current)
+        current = ''
+        currentWidth = 0
+        if (wordWidth > width) lines.push(...wrapText(word, width))
+        else {
+          current = word
+          currentWidth = wordWidth
+        }
+      }
+    }
+    if (current !== '') lines.push(current)
+  }
+  return lines
+}
+
 /** Collapsible node kinds: they render a title line plus an optional body. */
 function isCollapsible(node: TuiNode): boolean {
   return node.kind === 'context' || node.kind === 'think' || node.kind === 'tool' || node.kind === 'retry'
@@ -541,7 +582,7 @@ function nodeLines(
         text, color: 'magenta', dim: !expanded,
       }))
       const body = expanded
-        ? wrapText(sanitizeTerminalText(node.text), width - 2).map(text => ({ text: `  │ ${text}`, color: 'magenta', dim: true }))
+        ? wrapTextWords(sanitizeTerminalText(node.text), width - 2).map(text => ({ text: `  │ ${text}`, color: 'magenta', dim: true }))
         : []
       return withKey([...head, ...body])
     }
@@ -1279,13 +1320,14 @@ export function App(props: {
     : expanded.has(node.id)
   // The 100ms tick drives the spinner frame, the live Thinking shimmer, and
   // the retry shimmer (500ms per flip). Settled node projections stay out of
-  // the tick: recomputing up to 800 nodes ten times a second during a busy
-  // turn is the tool-use performance killer.
+  // the tick: recomputing up to 3000 nodes ten times a second during a busy
+  // turn is bounded; the cap only guards pathological sessions and must not
+  // drop the first user message out of the scrollable history.
   const retryShimmer = hasPendingRetry && Math.floor(tick / 5) % 2 === 0
   const settledLines = useMemo((): TranscriptLine[] => {
     if (viewMode === 'trajectory') {
       return snapshot.trace
-        .slice(Math.max(0, snapshot.trace.length - 800))
+        .slice(Math.max(0, snapshot.trace.length - 3000))
         .map((entry, index) => {
           const text = `· ${sanitizeTerminalText(entry.text)}`
           // Structured-trajectory palette: model turns blue, tool activity red,
@@ -1298,7 +1340,7 @@ export function App(props: {
           }
         })
     }
-    const nodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 800))
+    const nodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 3000))
     const lines: TranscriptLine[] = []
     if (nodes.length === 0) {
       // Content width: the transcript box adds one padding cell per side.
@@ -1334,9 +1376,13 @@ export function App(props: {
     const lines: TranscriptLine[] = [{ key: 'live-think', text: '', runs }]
     const tail = snapshot.live.think.split('\n').at(-1) ?? ''
     if (tail !== '') {
+      // Bound the preview to one row: a longer tail would wrap onto the next
+      // line without its `│` prefix and overwrite the row below.
+      const tailSpace = Math.max(8, width - 5)
+      const content = stringWidth(tail) <= tailSpace ? tail : `…${tail.slice(-(tailSpace - 1))}`
       lines.push({
         key: 'live-think-tail',
-        text: `  │ ${tail.slice(-60)}`,
+        text: `  │ ${content}`,
         dim: true,
       })
     }
@@ -2107,7 +2153,7 @@ export function App(props: {
     // history exactly like cmd/PowerShell.
     if (draft === '' && key.tab) {
       if (selectedId === null) {
-        const visibleNodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 800))
+        const visibleNodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 3000))
         setSelectedId(visibleNodes[visibleNodes.length - 1]?.id ?? null)
       } else {
         setSelectedId(null)
@@ -2117,7 +2163,7 @@ export function App(props: {
     const history = historyRef.current
     if (key.upArrow) {
       if (draft === '' && selectedId !== null) {
-        const visibleNodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 800))
+        const visibleNodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 3000))
         const currentIndex = visibleNodes.findIndex(node => node.id === selectedId)
         if (visibleNodes.length > 0) {
           setSelectedId(visibleNodes[Math.max(0, currentIndex - 1)]?.id ?? visibleNodes[0]?.id ?? null)
@@ -2136,7 +2182,7 @@ export function App(props: {
     }
     if (key.downArrow) {
       if (draft === '' && selectedId !== null) {
-        const visibleNodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 800))
+        const visibleNodes = snapshot.nodes.slice(Math.max(0, snapshot.nodes.length - 3000))
         const currentIndex = visibleNodes.findIndex(node => node.id === selectedId)
         if (visibleNodes.length > 0) {
           setSelectedId(visibleNodes[Math.min(visibleNodes.length - 1, currentIndex + 1)]?.id ?? visibleNodes[visibleNodes.length - 1]?.id ?? null)
