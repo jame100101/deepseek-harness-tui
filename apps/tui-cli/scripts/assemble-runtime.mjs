@@ -250,6 +250,12 @@ function main() {
     const destination = join(runtimeDir, 'node_modules', name)
     const bytes = copyPayload(root, relDir, destination, files)
     if (bytes === 0) throw new Error(`assemble-runtime: package ${name} copied nothing (files ${JSON.stringify(manifest.files)})`)
+    // Fail loud on a missing main entry: some packages emit their Node entry
+    // only during the client build face, and an assembled runtime that lacks
+    // it would boot only until the first loader import.
+    if (typeof manifest.main === 'string' && manifest.main.startsWith('lib/') && !existsSync(join(destination, manifest.main))) {
+      throw new Error(`assemble-runtime: package ${name} payload is missing its main entry ${manifest.main} — build both faces (pnpm run build:lib) before assembling`)
+    }
     totalBytes += bytes
     notices.push(`${name} ${manifest.version ?? '?'} — ${manifest.license ?? 'MIT'}`)
   }
