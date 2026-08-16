@@ -1,9 +1,22 @@
-# @deepseek-ai/dsh-tui-cli
+# @jame100101/dsh-tui
 
 `dsh-tui` — a thin, Claude Code-style command line over the DeepSeek Harness
-terminal surface. It boots the existing TUI profile (`dsh --profile tui`) with
-a small user-facing flag grammar; all sessions, agents, and rendering stay in
-the TUI app.
+terminal surface. It boots the TUI profile with a small user-facing flag
+grammar; all sessions, agents, and rendering stay in the bundled runtime.
+
+> **Release Candidate** — `0.1.0-rc.5`. The package is prepared for npm
+> publication but has not been published yet.
+
+## Install
+
+```text
+npm install -g @jame100101/dsh-tui
+```
+
+The package ships the built dsh runtime inside `runtime/`, so the global
+install needs no other DeepSeek Harness package — external dependencies
+install from the npm registry automatically. First boot initializes the
+`tui` profile under `$DSH_HOME` on its own.
 
 ## Usage
 
@@ -22,6 +35,6 @@ Exit codes: `0` success, `1` execution failure, `2` usage error, `130`
 SIGINT. `--print` output goes to stdout (assistant result only); diagnostics
 go to stderr.
 
-The wrapper resolves the built `dsh` bin through its `@deepseek-ai/dsh`
-dependency and spawns it with inherited stdio — it never captures output,
+The wrapper resolves the bundled launcher bin, spawns it with inherited
+stdio, and passes the child's exit code through — it never captures output,
 queries sessions, or renders anything itself.
