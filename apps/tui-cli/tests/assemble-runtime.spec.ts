@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { externalDependencies, runtimeClosure, semverMax } from '../scripts/assemble-runtime.mjs'
+import { bundleRowPackages, externalDependencies, runtimeClosure, semverMax } from '../scripts/assemble-runtime.mjs'
 
 const root = join(import.meta.dirname, '..', '..', '..')
 
@@ -10,6 +10,24 @@ describe('semverMax', () => {
     expect(semverMax('8.3.0', '15.0.0')).toBe('15.0.0')
     expect(semverMax('19.2.8', '18.3.1')).toBe('19.2.8')
     expect(semverMax('7.2.0', '7.2.0')).toBe('7.2.0')
+  })
+})
+
+describe('bundleRowPackages', () => {
+  it('collects the loader-row packages the bundle patches reference', () => {
+    const rows = bundleRowPackages(root)
+    // These rows exist only in the bundle patches, not in apps/cli's
+    // manifest closure — a fresh profile resolves them through the healed
+    // fallback, so the bundled runtime must name them in its anchor manifest.
+    expect(rows.has('@deepseek-ai/dsh-typert-registry')).toBe(true)
+    expect(rows.has('@deepseek-ai/dsh-api-gateway')).toBe(true)
+    expect(rows.has('@deepseek-ai/dsh-tui')).toBe(true)
+  })
+
+  it('joins the runtime closure through the extra roots', () => {
+    const closure = runtimeClosure(root, [...bundleRowPackages(root)])
+    expect(closure.has('@deepseek-ai/dsh-typert-registry')).toBe(true)
+    expect(closure.has('@deepseek-ai/dsh-api-gateway')).toBe(true)
   })
 })
 

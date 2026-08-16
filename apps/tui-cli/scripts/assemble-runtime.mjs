@@ -35,8 +35,8 @@ export function semverMax(left, right) {
   return left
 }
 
-/** BFS the runtime closure of apps/cli: dependencies + peers + optionalDependencies. */
-export function runtimeClosure(rootDir) {
+/** Workspace package name → repo-relative dir, from the lockfile importers. */
+function workspaceByName(rootDir) {
   const importers = readLock(rootDir).importers
   const byName = new Map()
   for (const [relDir] of Object.entries(importers)) {
@@ -44,9 +44,15 @@ export function runtimeClosure(rootDir) {
     const manifest = JSON.parse(readFileSync(join(rootDir, relDir, 'package.json'), 'utf8'))
     byName.set(manifest.name, relDir)
   }
+  return byName
+}
+
+/** BFS the runtime closure of apps/cli: dependencies + peers + optionalDependencies, plus any extra roots. */
+export function runtimeClosure(rootDir, extraRoots = []) {
+  const byName = workspaceByName(rootDir)
   const workspace = new Map()
   const visited = new Set()
-  const queue = ['apps/cli']
+  const queue = ['apps/cli', ...extraRoots.map(name => byName.get(name)).filter(dir => dir !== undefined)]
   while (queue.length > 0) {
     const dir = queue.shift()
     if (visited.has(dir)) continue
@@ -60,6 +66,37 @@ export function runtimeClosure(rootDir) {
     }
   }
   return workspace
+}
+
+/**
+ * The workspace package names the shipped bundle patch layers reference as
+ * loader rows (`name:` fields). The launcher links the profile fallback from
+ * the install anchor's MANIFEST closure only, so a row package that is not a
+ * manifest dependency would never resolve on a fresh profile; the bundled
+ * runtime therefore adds them to its anchor manifest's dependencies.
+ * The patch text is scanned for `name:` literals instead of parsed as YAML:
+ * bundle patches carry the loader's custom `!!js` tags, which plain js-yaml
+ * rejects, and the collector only needs the quoted package names.
+ * @param rootDir - repository root.
+ * @returns the referenced workspace package names.
+ */
+export function bundleRowPackages(rootDir) {
+  const byName = workspaceByName(rootDir)
+  const names = new Set()
+  const namePattern = /^\s*name:\s*['"](@deepseek-ai\/[^'"]+)['"]/gm
+  for (const [name, relDir] of byName) {
+    const manifest = JSON.parse(readFileSync(join(rootDir, relDir, 'package.json'), 'utf8'))
+    const patchFile = manifest.dsh?.bundle?.patch
+    if (typeof patchFile !== 'string') continue
+    const patchPath = join(rootDir, relDir, patchFile)
+    if (!existsSync(patchPath)) continue
+    const text = readFileSync(patchPath, 'utf8')
+    for (const match of text.matchAll(namePattern)) {
+      if (match[1] !== undefined && byName.has(match[1])) names.add(match[1])
+    }
+    void name
+  }
+  return names
 }
 
 /** The external registry dependencies of the closure, pinned to the lockfile's resolved versions. */
@@ -183,7 +220,8 @@ function copyPayload(rootDir, relDir, destination, files) {
 }
 
 function main() {
-  const workspace = runtimeClosure(root)
+  const rowPackages = bundleRowPackages(root)
+  const workspace = runtimeClosure(root, [...rowPackages])
   const externals = externalDependencies(root, workspace)
   rmSync(runtimeDir, { recursive: true, force: true })
   mkdirSync(join(runtimeDir, 'node_modules'), { recursive: true })
@@ -194,6 +232,17 @@ function main() {
   const launcherFiles = payloadFiles(root, 'apps/cli', cliManifest)
   totalBytes += copyPayload(root, 'apps/cli', runtimeDir, launcherFiles)
   notices.push(`@deepseek-ai/dsh (launcher, apps/cli) ${cliManifest.version} — ${cliManifest.license}`)
+  // The launcher links the profile fallback from THIS manifest's dependency
+  // closure, so the bundle patch rows' packages must appear in it — a row
+  // package absent from the manifest never resolves on a fresh profile.
+  const byName = workspaceByName(root)
+  const rowDeps = Object.fromEntries([...rowPackages].sort().map((name) => {
+    const relDir = byName.get(name)
+    const manifest = JSON.parse(readFileSync(join(root, relDir, 'package.json'), 'utf8'))
+    return [name, manifest.version ?? '0.0.0']
+  }))
+  const runtimeManifest = { ...cliManifest, dependencies: { ...cliManifest.dependencies, ...rowDeps } }
+  writeFileSync(join(runtimeDir, 'package.json'), `${JSON.stringify(runtimeManifest, undefined, 2)}\n`)
   // 2. Every workspace package in the closure, under runtime/node_modules/<name>.
   for (const [name, relDir] of [...workspace].sort()) {
     const manifest = JSON.parse(readFileSync(join(root, relDir, 'package.json'), 'utf8'))
