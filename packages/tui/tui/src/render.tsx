@@ -210,7 +210,7 @@ const COPY: Record<Locale, Copy> = {
     credentialRemoveFailed: error => `移除失败：${error}`,
     killJobRequested: id => `已请求杀掉任务 ${id}`,
     resumeDone: id => `已恢复会话 ${id}`,
-    presetSwitched: id => `已切换到预设 ${id}（新会话生效，旧会话已存入 /sessions）`,
+    presetSwitched: id => `已切换当前会话到预设 ${id}`,
     invalidNumber: '请输入有效的数字',
     fieldUpdated: field => `${field} 已更新`,
     cancelRequested: '已请求取消 · 2 秒内再按 Ctrl+C 退出',
@@ -296,7 +296,7 @@ const COPY: Record<Locale, Copy> = {
     credentialRemoveFailed: error => `remove failed: ${error}`,
     killJobRequested: id => `kill requested for job ${id}`,
     resumeDone: id => `resumed session ${id}`,
-    presetSwitched: id => `switched to preset ${id} (a new session takes it over; the old one is saved under /sessions)`,
+    presetSwitched: id => `switched the current session to preset ${id}`,
     invalidNumber: 'Please enter a valid number',
     fieldUpdated: field => `${field} updated`,
     cancelRequested: 'cancel requested · press Ctrl+C again within 2s to exit',
@@ -1983,12 +1983,9 @@ export function App(props: {
           if (error !== null) {
             setNotice(error)
           } else {
+            // The switch is IN PLACE (the Web mechanism): the panel stays
+            // open so the ● marker can move to the new preset.
             setNotice(copy.presetSwitched(row.meta?.id ?? ''))
-            setPanel(null)
-            // The preset switch starts a fresh session: drop any stale
-            // scroll offset and selection from the previous transcript.
-            setTranscriptScrollOffset(0)
-            setSelectedId(null)
           }
         })
         return

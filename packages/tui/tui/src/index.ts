@@ -1041,41 +1041,34 @@ async function boot(
       return `恢复失败：${error instanceof Error ? error.message : String(error)}`
     }
   }
-  /** Switch the surface onto a NEW session composed from one agent preset. */
+  /**
+   * Switch the CURRENT session onto one agent preset, in place — the exact
+   * Web mechanism. The agent and the session survive; only the composition is
+   * swapped, and it is recorded in the log afterwards.
+   */
   const switchPreset = async (id: string): Promise<string | null> => {
-    // Phase 1 — compose the next agent under the target preset. A failure
-    // (unknown id, broken composition, missing service) leaves the current
-    // surface untouched: report it as a notice.
-    let next: { agent: Agent; handle: AgentHandle; selection: ModelSelection; ref: ModelSelectionRef }
-    try {
-      next = await createAgent(ctx, surface.cwd, id)
-    } catch (error) {
-      return `切换预设失败：${error instanceof Error ? error.message : String(error)}`
+    // Web parity: recomposing is limited to a BLANK session (no turn has
+    // started yet) — a started conversation's history was produced under its
+    // preset's tools, so its preset is fixed.
+    if (surface.agent.session.events.some(event => event.type === 'turn/start')) {
+      return '预设已锁定：当前会话已经开始对话，预设不可再变更（请 /new 开新会话后再切换）'
     }
-    // Phase 2 — the swap: same fail-loud boundary as /new and resume so a
-    // mid-swap failure can never leave a deaf surface behind.
+    const presetService = ctx.get('agentPresets') as { recompose(agentCtx: Context, id: string): Promise<{ id: string }> } | undefined
+    if (presetService === undefined) {
+      return 'agent 预设服务未加载（bundle 缺 dsh-agent-presets）'
+    }
     try {
-      unsubscribe()
-      await currentHandle.dispose()
-      currentHandle = next.handle
-      surface.fold = initialState()
-      surface.scratch = createScratch()
-      surface.agent = next.agent
-      surface.selection = next.ref
-      surface.currentModel = next.selection.model
-      surface.busy = false
-      surface.pendingApproval = null
-      surface.pendingQuestion = null
-      surface.feedback = new Map()
-      surface.pendingAttachments = []
-      unsubscribe = subscribe(ctx, store, surface, refreshSettings)
-      // Republish the settings pages so the presets marker flips to the new
-      // session's preset.
+      // The re-link is safe by construction: an unknown or unusable preset
+      // throws with the agent exactly as it was.
+      const preset = await presetService.recompose(surface.agent.ctx, id)
+      // Recorded only after the swap committed: the log states what the
+      // agent runs, and a rejected mount leaves the previous composition.
+      surface.agent.session.append('agent-preset/selected', { agentPreset: preset.id })
+      // The presets page marks the CURRENT preset: republish settings so the
+      // marker follows the switch.
       refreshSettings()
-      void loadFeedback()
       return null
     } catch (error) {
-      fail(ctx, error)
       return `切换预设失败：${error instanceof Error ? error.message : String(error)}`
     }
   }

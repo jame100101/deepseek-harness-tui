@@ -536,15 +536,16 @@ describe('Ink 7 full-screen render', () => {
       let lines = lastFrameLines(capture.output)
       expect(lines.some(line => line.includes('预设 Presets'))).toBe(true)
       expect(lines.some(line => line.includes('● code'))).toBe(true)
-      // ↓ onto the minimal row (head + code row above it), Enter switches:
-      // the host callback runs and the panel closes over the notice.
+      // ↓ onto the minimal row (head + code row above it), Enter switches in
+      // place: the host callback runs, the notice pins under the still-open
+      // panel (the ● marker moves to the new preset).
       await type('\x1b[B')
       await type('\x1b[B')
       await type('\r')
       expect(switched).toEqual(['minimal'])
       lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('已切换到预设 minimal'))).toBe(true)
-      expect(lines.some(line => line.includes('预设 Presets'))).toBe(false)
+      expect(lines.some(line => line.includes('已切换当前会话到预设 minimal'))).toBe(true)
+      expect(lines.some(line => line.includes('预设 Presets'))).toBe(true)
     } finally {
       unmount()
     }

@@ -107,7 +107,7 @@ The first-load screen prints the DeepSeek whale banner; type a task and press
 | `/trajectory` | toggle the structured trajectory view (blue=model, red=tools, cyan=user) |
 | `/model` | open the Models page to pick the default model |
 | `/settings [general\|models\|plugins\|inventory\|presets]` | open the five settings pages |
-| `/presets` | open the agent-preset page (`Enter` switches, starting a new session) |
+| `/presets` | open the agent-preset page (`Enter` switches the blank session in place) |
 | `/jobs` | background jobs panel (`Enter` kills the selected job, 1s polling) |
 | `/subagents` | subagent tree panel (depth-indented, live activity) |
 | `/workflows` | workflow run progress panel |
@@ -185,8 +185,9 @@ registered host commands, and unknown text becomes a model message.
   adapter reasoning levels), Plugins (per-namespace top-level field editor:
   bool/string/number/secret, values never echoed), Inventory (namespaces,
   secret slots, credential refs, loader tree), Presets (agent presets:
-  `Enter` switches by starting a NEW session under that preset — the current
-  one is saved and stays resumable from `/sessions`; `Tab` cycles pages).
+  `Enter` switches the BLANK session in place — the Web mechanism: once a
+  conversation starts, its preset is fixed, so switch after `/new`; `Tab`
+  cycles pages).
 - **Plugin toggle:** `Enter` on a plugin row flips it — the switch writes
   `$DSH_HOME/profiles/<name>/cordis.patch.yml` and the launcher's HMR watch
   hot-applies it; the row's `●`/`○` dot and bright/dim state flip as soon as
@@ -313,7 +314,7 @@ pnpm exec dsh --profile tui   # 构建产物启动（约 2.7s，推荐日常使�
 | `/trajectory` | 切换结构化轨迹视图（蓝=模型/红=工具/青=用户） |
 | `/model` | 打开模型页选择默认模型 |
 | `/settings [general\|models\|plugins\|inventory\|presets]` | 打开五页设置（Tab 切换模块） |
-| `/presets` | 打开 agent 预设页（Enter 切换，以该预设开新会话） |
+| `/presets` | 打开 agent 预设页（Enter 切换，空白会话原地生效） |
 | `/jobs` | 后台任务面板（Enter 杀掉选中任务，每秒轮询） |
 | `/subagents` | 子代理树面板（深度缩进、活动状态） |
 | `/workflows` | workflow 运行进度面板（阶段/agent 数/日志/错误） |

@@ -181,8 +181,8 @@ export function buildSettingsRows(
       const rows: PanelRow[] = [{
         key: 'p-head',
         text: locale === 'en'
-          ? 'Presets · Enter switches (starts a new session) · Tab switches modules'
-          : '预设 Presets · Enter 切换（以该预设开新会话）· Tab 切换模块',
+          ? 'Presets · Enter switches the blank session in place · Tab switches modules'
+          : '预设 Presets · Enter 切换（空白会话原地生效）· Tab 切换模块',
         color: 'cyan',
       }]
       if (data.presets.length === 0) {
@@ -198,7 +198,7 @@ export function buildSettingsRows(
           ...(current || preset.broken !== undefined ? {} : { action: 'select-preset' as const, meta: { id: preset.id } }),
         })
       }
-      rows.push({ key: 'p-foot', text: locale === 'en' ? 'Switching starts a NEW session under that preset; the current session is saved and stays resumable from /sessions' : '切换会以该预设开启一个新会话；当前会话已保存，可随时从 /sessions 恢复', dim: true })
+      rows.push({ key: 'p-foot', text: locale === 'en' ? 'A blank session switches in place; once the conversation starts its preset is fixed (switch after /new)' : '空白会话原地切换；会话开始后预设锁定（请 /new 后切换）', dim: true })
       return rows
     }
   }
