@@ -20,6 +20,14 @@
     - id: tui
       name: '@deepseek-ai/dsh-tui'
 
+    # Code Mode is a core execution capability, not a Web component (the
+    # headless and web-app bundles mount the same row). The `code` agent
+    # preset's tool-presentation row waits on this host-plane runtime; without
+    # it the preset cannot mount, and switching to it fails with
+    # "preset failed to mount" naming tool-presentation.
+    - id: code-runtime
+      name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+
     # Durable per-message feedback sidecar (Web parity for 👍/👎): the base
     # bundle already loads session-persistence; storage + storage-domain host
     # the sidecar domain (the web-app rows, mirrored).
