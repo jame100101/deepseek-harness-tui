@@ -906,15 +906,18 @@ async function boot(
   }
   /** Resume one persisted session onto the surface; rebuilds the transcript from its log. */
   const resumeSession = async (id: string): Promise<string | null> => {
+    const selected = surface.selection.current ?? ctx.agentDefaultModel.currentSelection()
+    const selection: ModelSelection = {
+      provider: selected.provider,
+      model: selected.model,
+      ...(selected.reasoningEffort === undefined ? {} : { reasoningEffort: selected.reasoningEffort }),
+    }
+    const ref: ModelSelectionRef = { current: selection, assembled: undefined }
+    // Phase 1 — prepare the next agent. A failure here leaves the current
+    // surface (agent and subscription) untouched: report it as a notice.
+    let next: AgentHandle
     try {
-      const selected = surface.selection.current ?? ctx.agentDefaultModel.currentSelection()
-      const selection: ModelSelection = {
-        provider: selected.provider,
-        model: selected.model,
-        ...(selected.reasoningEffort === undefined ? {} : { reasoningEffort: selected.reasoningEffort }),
-      }
-      const ref: ModelSelectionRef = { current: selection, assembled: undefined }
-      const next = await ctx.agents.resume({
+      next = await ctx.agents.resume({
         resumeSessionId: SessionId(id),
         agentOptions: {
           provider: selection.provider,
@@ -923,6 +926,15 @@ async function boot(
         },
         setup: (agentCtx) => { installModelSelection(agentCtx, ref) },
       })
+    } catch (error) {
+      return `恢复失败：${error instanceof Error ? error.message : String(error)}`
+    }
+    // Phase 2 — the swap. Once the old subscription drops, no failure may
+    // leave the surface without a subscription: input would keep reaching an
+    // agent while no event could reach the UI (the silent "swallowed input"
+    // state). Fail loud, like /new, instead of showing a notice over a deaf
+    // surface.
+    try {
       unsubscribe()
       await currentHandle.dispose()
       // `resume` returns the AgentHandle itself (agent + dispose); the
@@ -955,6 +967,7 @@ async function boot(
       void loadFeedback()
       return null
     } catch (error) {
+      fail(ctx, error)
       return `恢复失败：${error instanceof Error ? error.message : String(error)}`
     }
   }
