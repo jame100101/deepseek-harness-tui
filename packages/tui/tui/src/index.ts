@@ -1542,31 +1542,40 @@ async function boot(
         return
       }
       const { runLegacy } = await import('./legacy')
+      /**
+       * One linear-mode submission: guard TUI-local slash commands, dispatch
+       * through the unified path, wait for the turn, and render the new rows.
+       * Shared by the REPL prompt handler and the startup prompt, so both
+       * produce the same plain output for the same submission.
+       */
+      const runLinearPrompt = async (text: string): Promise<void> => {
+        // TUI-local slash commands (panels, selection, sessions, presets…)
+        // have no linear-mode surface. Only host commands and plain prompts
+        // proceed — sending a UI directive to the model would pollute the turn.
+        if (text.startsWith('/')) {
+          const known = ctx.get('commands')?.list(surface.agent) ?? []
+          if (!known.some(command => command.name === text.split(' ')[0])) {
+            process.stdout.write('(linear mode: this command is only available in the interactive TUI)\n')
+            return
+          }
+        }
+        const firstCount = store.getSnapshot().nodes.length
+        dispatchOrFollowup(text, false)
+        await surface.agent.whenIdle()
+        const nodes = store.getSnapshot().nodes
+        for (const node of nodes.slice(firstCount)) {
+          const rendered = renderNodePlain(node)
+          if (rendered !== '') process.stdout.write(rendered + '\n')
+        }
+      }
+      // The startup prompt runs through the same linear path as a REPL line;
+      // it settles BEFORE the REPL starts so an immediate piped EOF cannot
+      // exit mid-turn and swallow the rendered result.
+      if (intent.prompt !== undefined) await runLinearPrompt(intent.prompt)
       const legacyDone = runLegacy({
-        onPrompt: async (text) => {
-          // TUI-local slash commands (panels, selection, sessions, presets…)
-          // have no linear-mode surface. Only host commands and plain
-          // prompts proceed — sending a UI directive to the model would
-          // pollute the turn.
-          if (text.startsWith('/')) {
-            const known = ctx.get('commands')?.list(surface.agent) ?? []
-            if (!known.some(command => command.name === text.split(' ')[0])) {
-              process.stdout.write('(linear mode: this command is only available in the interactive TUI)\n')
-              return
-            }
-          }
-          const firstCount = store.getSnapshot().nodes.length
-          dispatchOrFollowup(text, false)
-          await surface.agent.whenIdle()
-          const nodes = store.getSnapshot().nodes
-          for (const node of nodes.slice(firstCount)) {
-            const rendered = renderNodePlain(node)
-            if (rendered !== '') process.stdout.write(rendered + '\n')
-          }
-        },
+        onPrompt: async (text) => { await runLinearPrompt(text) },
         onExit: () => requestExit(ctx, EXIT_OK),
       })
-      if (intent.prompt !== undefined) dispatchOrFollowup(intent.prompt, false)
       await legacyDone
     }
   } catch (error) {
