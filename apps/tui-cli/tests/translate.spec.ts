@@ -1,4 +1,8 @@
 import { EventEmitter } from 'node:events'
+import { execFile } from 'node:child_process'
+import { mkdtempSync, readFileSync, symlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseDshTuiArgs, resolveDshBinPath, runDsh, translateDshTuiArgs } from '../bin/dsh-tui.js'
 
@@ -144,5 +148,25 @@ describe('runDsh', () => {
   it('reports a spawn failure as a failing exit', async () => {
     const outcome = await runDsh(['--profile', 'tui'], () => fakeSpawn({ error: new Error('ENOENT') }), noWrite)
     expect(outcome).toBe(1)
+  })
+})
+
+describe('symlink entrypoint', () => {
+  // npm's POSIX bin shims are symlinks; the wrapper must recognize itself
+  // as main when launched through one. Windows npm shims are .cmd files, so
+  // this exact reproduction is POSIX-only.
+  it.skipIf(process.platform === 'win32')('runs --version through a symlinked bin and exits 0', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-tui-symlink-'))
+    const binPath = join(import.meta.dirname, '..', 'bin', 'dsh-tui.js')
+    const linkPath = join(dir, 'dsh-tui')
+    symlinkSync(binPath, linkPath)
+    const manifest = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as { version: string }
+    const { stdout, error } = await new Promise<{ stdout: string; error: Error | null }>((resolvePromise) => {
+      execFile(process.execPath, [linkPath, '--version'], (error, stdout) => {
+        resolvePromise({ stdout, error })
+      })
+    })
+    expect(error).toBeNull()
+    expect(stdout.trim()).toBe(manifest.version)
   })
 })

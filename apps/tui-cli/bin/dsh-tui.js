@@ -13,7 +13,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -201,10 +201,21 @@ export async function runDsh(translated, spawnImpl = spawn, writeErr = process.s
   return EXIT_FAILURE
 }
 
-/** Whether this module is the process entry (vs. an import under tests). */
+/**
+ * Whether this module is the process entry (vs. an import under tests). npm's
+ * POSIX bin shims are symlinks: `process.argv[1]` then carries the symlink
+ * path while ESM reports the real file path in `import.meta.url`, so both
+ * sides are realpathed before the comparison — otherwise an installed
+ * `dsh-tui` would silently no-op on Linux and macOS.
+ */
 function isMain() {
   const entry = process.argv[1]
-  return entry !== undefined && resolve(entry) === fileURLToPath(import.meta.url)
+  if (entry === undefined) return false
+  try {
+    return resolve(realpathSync(entry)) === resolve(fileURLToPath(import.meta.url))
+  } catch {
+    return resolve(entry) === resolve(fileURLToPath(import.meta.url))
+  }
 }
 
 if (isMain()) {
