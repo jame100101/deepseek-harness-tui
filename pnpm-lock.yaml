@@ -1261,6 +1261,9 @@ importers:
 
   packages/bundle/tui-app:
     dependencies:
+      '@deepseek-ai/dsh-agent-presets':
+        specifier: workspace:^
+        version: link:../../preset/agent-presets
       '@deepseek-ai/dsh-tui':
         specifier: workspace:^
         version: link:../../tui/tui

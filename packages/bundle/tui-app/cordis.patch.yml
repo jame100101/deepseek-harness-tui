@@ -40,3 +40,16 @@
       name: '@deepseek-ai/dsh-message-feedback'
       config:
         maxNoteBytes: 8192
+
+    # The preset roster: the four shipped presets under `config/agent-presets/`
+    # (code/cordis/minimal/standard) plus the writable `$DSH_HOME/.agent-presets`
+    # user root (dsh-agent-presets' own default). The SHIPPED system root is an
+    # assembly fact — `apps/cli`'s composeProfile resolves it beside this app's
+    # own config and patches it in as an overlay, exactly like the web-app
+    # bundle. Mounting the service does NOT change existing sessions: an agent
+    # joins a preset only when the TUI's preset switch (or a continued/resumed
+    # session) names one.
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: standard
