@@ -252,8 +252,14 @@ function main() {
     if (bytes === 0) throw new Error(`assemble-runtime: package ${name} copied nothing (files ${JSON.stringify(manifest.files)})`)
     // Fail loud on a missing main entry: some packages emit their Node entry
     // only during the client build face, and an assembled runtime that lacks
-    // it would boot only until the first loader import.
-    if (typeof manifest.main === 'string' && manifest.main.startsWith('lib/') && !existsSync(join(destination, manifest.main))) {
+    // it would boot only until the first loader import. Patch-only bundles
+    // (no runtime entry — the loader consumes their cordis.patch.yml) are
+    // exempt from the entry check; their patch file itself is required.
+    if (typeof manifest.dsh?.bundle?.patch === 'string') {
+      if (!existsSync(join(destination, manifest.dsh?.bundle?.patch))) {
+        throw new Error(`assemble-runtime: bundle ${name} payload is missing its patch layer ${manifest.dsh?.bundle?.patch}`)
+      }
+    } else if (typeof manifest.main === 'string' && manifest.main.startsWith('lib/') && !existsSync(join(destination, manifest.main))) {
       throw new Error(`assemble-runtime: package ${name} payload is missing its main entry ${manifest.main} — build both faces (pnpm run build:lib) before assembling`)
     }
     totalBytes += bytes
