@@ -1358,6 +1358,17 @@ async function boot(
       const { runLegacy } = await import('./legacy')
       await runLegacy({
         onPrompt: async (text) => {
+          // TUI-local slash commands (panels, selection, sessions, presets…)
+          // have no linear-mode surface. Only host commands and plain
+          // prompts proceed — sending a UI directive to the model would
+          // pollute the turn.
+          if (text.startsWith('/')) {
+            const known = ctx.get('commands')?.list(surface.agent) ?? []
+            if (!known.some(command => command.name === text.split(' ')[0])) {
+              process.stdout.write('(linear mode: this command is only available in the interactive TUI)\n')
+              return
+            }
+          }
           const firstCount = store.getSnapshot().nodes.length
           dispatchOrFollowup(text, false)
           await surface.agent.whenIdle()

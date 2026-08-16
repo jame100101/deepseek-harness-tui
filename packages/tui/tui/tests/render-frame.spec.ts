@@ -333,12 +333,15 @@ describe('Ink 7 full-screen render', () => {
       await type('/')
       let lines = lastFrameLines(capture.output)
       expect(lines.some(line => line.includes('命令（↑↓ 选择'))).toBe(true)
-      expect(lines.some(line => line.includes('▸ /help'))).toBe(true)
+      // The palette lists commands ALPHABETICALLY (a→z), so the selection
+      // starts on /attach; /help is still listed.
+      expect(lines.some(line => line.includes('▸ /attach'))).toBe(true)
+      expect(lines.some(line => line.includes('/help'))).toBe(true)
       await type('\x1b[B')
       lines = lastFrameLines(capture.output)
       expect(lines.some(line => line.includes('命令（↑↓ 选择'))).toBe(true)
       expect(lines.some(line => line.includes('▸ /clear'))).toBe(true)
-      expect(lines.some(line => line.includes('▸ /help'))).toBe(false)
+      expect(lines.some(line => line.includes('▸ /attach'))).toBe(false)
     } finally {
       unmount()
     }

@@ -172,7 +172,7 @@ function tableLines(table: { header: TableCell[]; rows: TableCell[][]; align?: (
   // Border overhead: `│ ` + ` │` per column plus the trailing `│`.
   const overhead = columns * 3 + 1
   const available = Math.max(columns * 3 + 1, Math.floor(maxWidth))
-  let widths = [...natural]
+  const widths = [...natural]
   let total = widths.reduce((sum, width) => sum + width, 0) + overhead
   while (total > available) {
     const widest = widths.reduce((best, width, index) => width > (widths[best] ?? 0) ? index : best, 0)
@@ -423,19 +423,19 @@ export function welcomeBlock(width: number, model: string, cwd: string, sessionI
   const lines: string[] = [`┏${'━'.repeat(leftRule)}${label}${'━'.repeat(rightRule)}┓`]
   const details = locale === 'en'
     ? [
-        `Model: ${model}`,
-        `Workspace: ${cwd}`,
-        `Session: ${sessionId}`,
-        '',
-        'Type a task below; /help lists commands.',
-      ]
+      `Model: ${model}`,
+      `Workspace: ${cwd}`,
+      `Session: ${sessionId}`,
+      '',
+      'Type a task below; /help lists commands.',
+    ]
     : [
-        `Model: ${model}`,
-        `Workspace: ${cwd}`,
-        `Session: ${sessionId}`,
-        '',
-        '在底部输入任务；输入 /help 查看命令。',
-      ]
+      `Model: ${model}`,
+      `Workspace: ${cwd}`,
+      `Session: ${sessionId}`,
+      '',
+      '在底部输入任务；输入 /help 查看命令。',
+    ]
   for (const detail of details) {
     for (const part of wrapCells(detail, Math.max(1, innerWidth - 2))) {
       lines.push(panelLine(part, innerWidth))
@@ -521,39 +521,45 @@ export function fitStatsStrip(strip: string, width: number): string {
   return groups.join(' · ')
 }
 
-/** The v0.0.13 help text for one chrome locale. */
+/** The help text for one chrome locale. */
 export function helpText(locale: 'zh' | 'en' = 'zh'): string {
   return locale === 'en'
     ? [
-        '/help        show this help',
-        '/clear       clear the display (session context kept)',
-        '/trajectory  toggle the structured trajectory view',
-        '/settings    four pages: general/models/plugins/inventory (Tab to switch)',
-        '/jobs        background jobs panel (Enter kills the selected job)',
-        '/subagents   subagent tree panel · /workflows workflow run progress',
-        '/model       pick a model · /sessions live + persisted sessions · /new fresh session',
-        '/effort      set the reasoning effort: off | high | max',
-        '/goal        current goal details · /quit /exit save and exit',
-        'Enter send · Ctrl+Enter steer · Shift+Enter newline · Esc cancel the running turn',
-        'Shift+Tab cycle the file permission · PgUp/PgDn history · ↑↓+Enter expand/collapse',
-        '↑/↓ input history · Tab selects a message (↑↓ move · Space expand · g/b rate)',
-        'Click the ▼ button to jump back to the newest lines · Ctrl+L clear · Ctrl+D exit when idle',
-      ].join('\n')
+      '/help        show this help',
+      '/clear       clear the display (session context kept)',
+      '/trajectory  toggle the structured trajectory view',
+      '/settings    five pages: general/models/plugins/inventory/presets (Tab to switch)',
+      '/jobs        background jobs panel (Enter kills the selected job)',
+      '/subagents   subagent tree panel · /workflows workflow run progress',
+      '/model       pick a model · /sessions live + persisted sessions · /new fresh session',
+      '/presets     switch the agent preset (blank session, in place)',
+      '/rename      rename the session title · /workspace <dir> switch directory',
+      '/attach      attach png/jpg/gif/webp · /fork [seq] fork the session',
+      '/effort      set the reasoning effort: off | high | max',
+      '/goal        current goal details · /quit /exit save and exit',
+      'Enter send · Ctrl+Enter steer · Shift+Enter newline · Esc cancel the running turn',
+      'Shift+Tab cycle the file permission · PgUp/PgDn history · ↑↓+Enter expand/collapse',
+      '↑/↓ input history · Tab selects a message (↑↓ move · Space expand · g/b rate)',
+      'Click the ▼ button to jump back to the newest lines · Ctrl+L clear · Ctrl+D exit when idle',
+    ].join('\n')
     : [
-        '/help        显示本帮助',
-        '/clear       清空显示（保留会话上下文）',
-        '/trajectory  切换结构化轨迹视图',
-        '/settings    设置四页：general/models/plugins/inventory（Tab 换页）',
-        '/jobs        后台任务面板（Enter 杀掉选中任务）',
-        '/subagents   子代理树面板 · /workflows workflow 运行进度',
-        '/model       选择模型 · /sessions 活动会话+持久化会话 · /new 新会话',
-        '/effort      设置推理力度：off | high | max',
-        '/goal        当前 goal 详情 · /quit /exit 保存并退出',
-        'Enter 发送 · Ctrl+Enter 转向(steer) · Shift+Enter 换行 · Esc 取消当前轮',
-        'Shift+Tab 切换文件权限 · PgUp/PgDn 历史 · ↑↓+Enter 展开/折叠',
-        '↑/↓ 历史输入 · Tab 选择消息（↑↓ 移动 · Space 展开 · g/b 评分）',
-        '点击 ▼ 按钮回到最新消息 · Ctrl+L 清屏 · Ctrl+D 空闲退出',
-      ].join('\n')
+      '/help        显示本帮助',
+      '/clear       清空显示（保留会话上下文）',
+      '/trajectory  切换结构化轨迹视图',
+      '/settings    设置五页：general/models/plugins/inventory/presets（Tab 换页）',
+      '/jobs        后台任务面板（Enter 杀掉选中任务）',
+      '/subagents   子代理树面板 · /workflows workflow 运行进度',
+      '/model       选择模型 · /sessions 活动会话+持久化会话 · /new 新会话',
+      '/presets     切换 agent 预设（空白会话原地生效）',
+      '/rename      重命名会话标题 · /workspace <目录> 切换工作目录',
+      '/attach      附加 png/jpg/gif/webp · /fork [seq] 分叉会话',
+      '/effort      设置推理力度：off | high | max',
+      '/goal        当前 goal 详情 · /quit /exit 保存并退出',
+      'Enter 发送 · Ctrl+Enter 转向(steer) · Shift+Enter 换行 · Esc 取消当前轮',
+      'Shift+Tab 切换文件权限 · PgUp/PgDn 历史 · ↑↓+Enter 展开/折叠',
+      '↑/↓ 历史输入 · Tab 选择消息（↑↓ 移动 · Space 展开 · g/b 评分）',
+      '点击 ▼ 按钮回到最新消息 · Ctrl+L 清屏 · Ctrl+D 空闲退出',
+    ].join('\n')
 }
 
 /** The zh help text (linear fallback default). */

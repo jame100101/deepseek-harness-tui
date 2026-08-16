@@ -448,6 +448,19 @@ export interface TuiHost {
   forkSession(atSeq?: number): Promise<string | null>
 }
 
+/**
+ * Chinese descriptions for the host slash commands (their packages publish
+ * English-only descriptions); display-layer only — execution is untouched.
+ */
+const HOST_COMMAND_ZH: Record<string, string> = {
+  goal: '设置或查看长期任务的 goal',
+  plan: '进入或退出 plan 模式',
+  compact: '压缩较早的对话历史',
+  feedback: '记录对本次会话的反馈',
+  permission: '设置命令权限预设',
+  export: '下载本会话日志（ZIP 归档）',
+}
+
 /** The `dsh` slash catalog: host commands plus TUI-local commands. */
 function localCommands(locale: Locale): { name: string; description: string; needsArgs: boolean }[] {
   const zh = locale === 'zh'
@@ -456,7 +469,7 @@ function localCommands(locale: Locale): { name: string; description: string; nee
     { name: 'clear', description: zh ? '清空显示（保留会话）' : 'clear the display (session kept)', needsArgs: false },
     { name: 'trajectory', description: zh ? '切换结构化轨迹视图' : 'toggle the structured trajectory view', needsArgs: false },
     { name: 'model', description: zh ? '选择模型' : 'pick a model', needsArgs: false },
-    { name: 'settings', description: zh ? '设置四页（general/models/plugins/inventory）' : 'four pages: general/models/plugins/inventory', needsArgs: false },
+    { name: 'settings', description: zh ? '设置五页（general/models/plugins/inventory/presets）' : 'five pages: general/models/plugins/inventory/presets', needsArgs: false },
     { name: 'jobs', description: zh ? '后台任务面板（Enter 杀掉选中任务）' : 'background jobs panel (Enter kills the selected job)', needsArgs: false },
     { name: 'subagents', description: zh ? '子代理树面板' : 'subagent tree panel', needsArgs: false },
     { name: 'workflows', description: zh ? 'workflow 运行进度面板' : 'workflow run progress panel', needsArgs: false },
@@ -1383,15 +1396,34 @@ export function App(props: {
     }
   }, [panelOpen, pendingApproval, pendingQuestion])
 
-  const commands = useMemo(() => [...localCommands(locale), ...snapshot.commands.map(command => ({
-    name: command.name,
-    description: command.description,
-    needsArgs: command.needsArgs,
-  }))], [locale, snapshot.commands])
+  // The combined slash catalog: TUI-local commands first, then host commands.
+  // A host command whose name a local command already owns (e.g. `goal`) is
+  // SKIPPED here — the palette shows one row per name; execution semantics
+  // are unchanged (the exact `/goal` stays local, `/goal <text>` still
+  // reaches the host command). Host descriptions get their Chinese copy in
+  // the zh locale.
+  const commands = useMemo(() => {
+    const local = localCommands(locale)
+    const localNames = new Set(local.map(command => command.name))
+    const host = snapshot.commands
+      .filter(command => !localNames.has(command.name))
+      .map((command) => {
+        const localized = locale === 'zh' ? HOST_COMMAND_ZH[command.name] : undefined
+        return {
+          name: command.name,
+          description: localized ?? command.description,
+          needsArgs: command.needsArgs,
+        }
+      })
+    return [...local, ...host]
+  }, [locale, snapshot.commands])
   const slashMatchesFor = (value: string): { name: string; description: string; needsArgs: boolean }[] => {
     if (!value.startsWith('/')) return []
     const query = value.slice(1)
-    return commands.filter(command => command.name.startsWith(query.trim()))
+    // Alphabetical a→z by command name, top to bottom.
+    return commands
+      .filter(command => command.name.startsWith(query.trim()))
+      .sort((a, b) => a.name.localeCompare(b.name))
   }
   const palette = useMemo(() => {
     if (paletteDismissedInput === draft || panelOpen || pendingApproval !== null || pendingQuestion !== null) return null
