@@ -4,7 +4,7 @@
 terminal surface. It boots the TUI profile with a small user-facing flag
 grammar; all sessions, agents, and rendering stay in the bundled runtime.
 
-> **Release Candidate** — `0.1.0-rc.5`. The package is prepared for npm
+> **Release Candidate** — `0.1.0-rc.6`. The package is prepared for npm
 > publication but has not been published yet.
 
 ## Install
