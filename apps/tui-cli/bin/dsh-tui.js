@@ -133,11 +133,22 @@ export function parseDshTuiArgs(argv, streams = { stdout: process.stdout, stderr
 }
 
 /**
- * Resolve the built `dsh` bin of the `@deepseek-ai/dsh` dependency from its
- * manifest, for either the workspace or an installed node_modules layout.
+ * Resolve the launcher bin this wrapper spawns. The published package ships
+ * the built dsh runtime inside `runtime/` (a self-contained closure of the
+ * workspace packages, so installing it needs no registry package beyond the
+ * external dependencies); the monorepo dev layout falls back to the
+ * workspace-installed `@deepseek-ai/dsh` package.
  * @returns the absolute bin path.
  */
 export function resolveDshBinPath() {
+  const bundledManifestPath = fileURLToPath(new URL('../runtime/package.json', import.meta.url))
+  try {
+    const manifest = JSON.parse(readFileSync(bundledManifestPath, 'utf8'))
+    const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.dsh
+    if (typeof bin === 'string' && bin !== '') return join(dirname(bundledManifestPath), bin)
+  } catch {
+    // The bundled runtime is a release artifact; fall through to dev resolution.
+  }
   const manifestPath = require.resolve('@deepseek-ai/dsh/package.json')
   const manifest = require('@deepseek-ai/dsh/package.json')
   const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.dsh

@@ -93,6 +93,7 @@ export abstract class ReleaseFamily {
       const name = requireString(manifest, 'name', normalized)
       const version = requireString(manifest, 'version', normalized)
       if (name === WORKSPACE_ROOT_PACKAGE) throw new Error(`${normalized} selected the workspace root`)
+      if (!this.acceptsMember(name)) continue
       if (!name.startsWith('@deepseek-ai/')) throw new Error(`${normalized} must name an @deepseek-ai package`)
       if (seen.has(name)) throw new Error(`${name} appears twice in release family ${this.id}`)
       seen.add(name)
@@ -104,6 +105,16 @@ export abstract class ReleaseFamily {
       })
     }
     return members
+  }
+
+  /**
+   * Whether a discovered manifest belongs to this family. Families narrow it
+   * to exclude packages released through other channels.
+   * @param _name - the package name.
+   * @returns true when the package is a member.
+   */
+  protected acceptsMember(_name: string): boolean {
+    return true
   }
 
   /**
@@ -198,6 +209,16 @@ class DshFamily extends ReleaseFamily {
   readonly id = 'dsh'
   readonly patterns = ['packages/*/*/package.json', 'apps/*/package.json'] as const
   readonly tagPrefix = 'dsh-v'
+
+  /**
+   * The user-owned packages of this fork publish under @jame100101 and are
+   * released separately — the dsh family tags only the @deepseek-ai set.
+   * @param name - the discovered package name.
+   * @returns true for DeepSeek-namespace packages only.
+   */
+  protected override acceptsMember(name: string): boolean {
+    return name.startsWith('@deepseek-ai/')
+  }
 
   /**
    * Require one version across the family, the way a single tag can name it.

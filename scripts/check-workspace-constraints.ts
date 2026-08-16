@@ -47,14 +47,32 @@ const repositoryUrl = 'git+https://github.com/deepseek-harness/deepseek-harness.
  * their trusted publishing against the repository that runs the workflow.
  */
 const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
+/**
+ * Repository the user-owned packages of this fork point at. They are released
+ * outside the DeepSeek namespace, so they must not claim the DeepSeek source
+ * home the release members use.
+ */
+const forkRepositoryUrl = 'git+https://github.com/jame100101/deepseek-harness-tui.git'
 /** Directories whose packages this repository publishes: one release member each. */
 const releaseMemberDirectory = /^(?:packages\/[^/]+\/[^/]+|apps\/[^/]+|vendor\/[^/]+)$/
 
 const localArtifactDirs = new Set(['node_modules'])
+/**
+ * The source-home URL a release member must declare: the DeepSeek source home
+ * for the DeepSeek-namespace family, the fork's own repository for the
+ * user-owned packages of this fork.
+ * @param manifest - the member's manifest.
+ * @returns the required repository URL.
+ */
+function expectedReleaseRepositoryUrl(manifest: PackageManifest): string {
+  return manifest.name?.startsWith('@jame100101/') === true ? forkRepositoryUrl : publishedRepositoryUrl
+}
 const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh': ['lib/*.js', 'config'],
-  // The dsh-tui launcher is a zero-build bin-only wrapper over the dsh bin.
-  '@deepseek-ai/dsh-tui-cli': ['bin'],
+  // The dsh-tui launcher publishes its bundled runtime (the assembled built
+  // closure of the workspace packages) beside the bin; external dependencies
+  // install from the registry through the package's dependencies.
+  '@jame100101/dsh-tui': ['bin', 'runtime'],
   // The Web build emits sourcemaps for browser debugging; publishing them is
   // what the payload policy forbids, so the bundle ships without them.
   '@deepseek-ai/dsh-web-frontend': ['dist', '!dist/**/*.map'],
@@ -260,9 +278,9 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
       errors.push(`${label}: release member must set publishConfig.access to "public"`)
     }
     if (manifest.repository?.type !== 'git'
-      || manifest.repository.url !== publishedRepositoryUrl
+      || manifest.repository.url !== expectedReleaseRepositoryUrl(manifest)
       || manifest.repository.directory !== dir) {
-      errors.push(`${label}: release member repository must use ${publishedRepositoryUrl} with directory ${dir}`)
+      errors.push(`${label}: release member repository must use ${expectedReleaseRepositoryUrl(manifest)} with directory ${dir}`)
     }
   } else if (manifest.private !== true) {
     errors.push(`${label}: package.json must set "private": true`)

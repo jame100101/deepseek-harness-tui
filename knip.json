@@ -740,6 +740,17 @@
         "@deepseek-ai/.+"
       ]
     },
+    "apps/tui-cli": {
+      "entry": [
+        "tests/**/*.spec.ts"
+      ],
+      "project": [
+        "scripts/**/*.mjs"
+      ],
+      "ignoreDependencies": [
+        ".+"
+      ]
+    },
     "packages/client/modules": {
       "entry": [
         "tests/**/*.spec.ts"

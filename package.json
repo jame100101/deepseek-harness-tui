@@ -135,6 +135,7 @@
     "release:publish": "tsx scripts/release/publish.ts",
     "dsh": "node --import tsx/esm apps/cli/src/bin.ts",
     "dsh-tui": "node apps/tui-cli/bin/dsh-tui.js",
+    "dsh-tui:assemble-runtime": "node apps/tui-cli/scripts/assemble-runtime.mjs",
     "demo:code-mode": "node scripts/demo-code-mode.mjs",
     "demo:cordis": "node scripts/demo-cordis.mjs",
     "demo:acp": "node --import tsx packages/examples/acp-demo/src/bin.ts --config examples/acp-agent/cordis.yml",

@@ -1,13 +1,13 @@
 {
-  "name": "@deepseek-ai/dsh-tui-cli",
-  "description": "dsh-tui: a thin Claude Code-style CLI over dsh --profile tui",
+  "name": "@jame100101/dsh-tui",
+  "description": "dsh-tui: a thin Claude Code-style CLI over the DeepSeek Harness terminal surface, with a bundled runtime",
   "version": "0.1.0-rc.5",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/jame100101/deepseek-harness-tui.git",
     "directory": "apps/tui-cli"
   },
   "type": "module",
@@ -15,11 +15,70 @@
     "dsh-tui": "bin/dsh-tui.js"
   },
   "files": [
-    "bin"
+    "bin",
+    "runtime"
   ],
   "license": "MIT",
+  "scripts": {
+    "assemble-runtime": "node scripts/assemble-runtime.mjs"
+  },
   "dependencies": {
-    "@deepseek-ai/dsh": "workspace:^",
-    "commander": "^15.0.0"
+    "@babel/code-frame": "7.29.7",
+    "@earendil-works/pi-ai": "0.82.1",
+    "@joplin/turndown-plugin-gfm": "1.0.67",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/api-logs": "0.220.0",
+    "@opentelemetry/exporter-logs-otlp-http": "0.220.0",
+    "@opentelemetry/otlp-exporter-base": "0.220.0",
+    "@opentelemetry/resources": "2.10.0",
+    "@opentelemetry/sdk-logs": "0.220.0",
+    "@shikijs/langs": "4.3.1",
+    "@standard-schema/spec": "1.1.0",
+    "@tanstack/react-virtual": "3.14.9",
+    "@types/mdast": "4.0.4",
+    "@vscode/ripgrep": "1.18.0",
+    "anser": "2.3.5",
+    "chokidar": "5.0.0",
+    "clsx": "2.1.1",
+    "commander": "15.0.0",
+    "diff": "9.0.0",
+    "eventsource-parser": "3.1.0",
+    "fflate": "0.8.3",
+    "immer": "10.2.0",
+    "ink": "7.1.1",
+    "js-yaml": "4.2.0",
+    "katex": "0.16.47",
+    "koffi": "3.1.1",
+    "marked": "16.4.2",
+    "mdast-util-from-markdown": "2.0.3",
+    "mdast-util-gfm": "3.1.0",
+    "mdast-util-math": "3.0.0",
+    "micromark-core-commonmark": "2.0.3",
+    "micromark-extension-gfm": "3.0.0",
+    "micromark-extension-math": "3.1.0",
+    "micromark-factory-space": "2.0.1",
+    "micromark-util-character": "2.1.1",
+    "micromark-util-classify-character": "2.0.1",
+    "micromark-util-sanitize-uri": "2.0.1",
+    "micromark-util-symbol": "2.0.1",
+    "micromark-util-types": "2.0.2",
+    "node-addon-require-builtin": "0.1.4",
+    "node-pty": "1.1.0",
+    "picomatch": "4.0.4",
+    "react": "19.2.8",
+    "react-dom": "18.3.1",
+    "sharp": "0.35.3",
+    "shiki": "4.3.1",
+    "string-width": "8.2.2",
+    "turndown": "7.2.4",
+    "use-sync-external-store": "1.2.0",
+    "ws": "8.21.0",
+    "yaml": "2.9.0",
+    "zod": "4.4.3",
+    "zustand": "4.4.7"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh": "workspace:^"
   }
 }
