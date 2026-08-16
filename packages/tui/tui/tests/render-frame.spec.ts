@@ -226,6 +226,8 @@ async function mount(nodes: readonly TuiNode[] = [], hostOverrides: Partial<TuiH
       plugins: [],
       configs: {},
       inventory: { namespaces: [], credentials: [], inspectProviders: 0 },
+      presets: [],
+      currentPreset: undefined,
     },
     jobs: [],
     subagents: [],
@@ -258,6 +260,7 @@ async function mount(nodes: readonly TuiNode[] = [], hostOverrides: Partial<TuiH
     killJob: () => {},
     rateMessage: () => Promise.resolve(null),
     resumeSession: () => Promise.resolve(null),
+    switchPreset: () => Promise.resolve(null),
     updatePluginConfig: () => Promise.resolve(null),
     renameSession: () => Promise.resolve(null),
     changeWorkspace: () => Promise.resolve(null),
@@ -499,6 +502,49 @@ describe('Ink 7 full-screen render', () => {
       await type('\r')
       expect(refreshes).toEqual([1, 1])
       await type('q')
+    } finally {
+      unmount()
+    }
+  })
+
+  it('switches the agent preset from the settings presets page', async () => {
+    const switched: string[] = []
+    const { store, capture, unmount, type } = await mount([{ kind: 'user', id: 1, text: 'hi' }], {
+      switchPreset: async (id) => {
+        switched.push(id)
+        return null
+      },
+    })
+    try {
+      const snapshot = store.getSnapshot()
+      store.set({
+        ...snapshot,
+        version: snapshot.version + 1,
+        settings: snapshot.settings === null ? snapshot.settings : {
+          ...snapshot.settings,
+          presets: [
+            { id: 'code', name: 'Coding agent', trust: 'system' },
+            { id: 'minimal', name: 'Minimal', trust: 'system' },
+          ],
+          currentPreset: 'code',
+        },
+      })
+      // The presets page opens directly; the CURRENT preset is marked and
+      // inert, the other row carries the select action.
+      await type('/presets')
+      await type('\r')
+      let lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('预设 Presets'))).toBe(true)
+      expect(lines.some(line => line.includes('● code'))).toBe(true)
+      // ↓ onto the minimal row (head + code row above it), Enter switches:
+      // the host callback runs and the panel closes over the notice.
+      await type('\x1b[B')
+      await type('\x1b[B')
+      await type('\r')
+      expect(switched).toEqual(['minimal'])
+      lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('已切换到预设 minimal'))).toBe(true)
+      expect(lines.some(line => line.includes('预设 Presets'))).toBe(false)
     } finally {
       unmount()
     }

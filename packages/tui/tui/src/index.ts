@@ -55,6 +55,9 @@ import type {} from '@deepseek-ai/dsh-goal'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type {} from '@deepseek-ai/dsh-session-title'
 import type {} from '@deepseek-ai/dsh-attachment'
+// Empty import carries the agent-presets Context merge and the
+// `agent-preset/selected` session-event vocabulary the preset rows below read.
+import type {} from '@deepseek-ai/dsh-agent-presets'
 // Empty type imports carry the sandbox-policy Context merge, the
 // session-projection registry merge, the token-meter `contextPressure`
 // SessionProjectionMap key the publish path reads, and the app-boot
@@ -333,6 +336,25 @@ async function loadSettingsData(ctx: Context, surface: Surface, tuiScope: Settin
   }
   const general = tuiScope.get() as GeneralSettings
   const inspect = ctx.get('cordisInspect') as { list(): readonly unknown[] } | undefined
+  // The preset roster is optional (the tui profile mounts it; a bare profile
+  // does not): the presets page degrades to its empty placeholder when the
+  // service is absent, and a failed roster read must not blank the whole page.
+  const presetService = ctx.get('agentPresets') as {
+    list(): Promise<{ id: string; name?: string; trust: 'system' | 'user'; broken?: string }[]>
+  } | undefined
+  let presetRows: { id: string; name: string; trust: 'system' | 'user'; broken?: string }[] = []
+  if (presetService !== undefined) {
+    try {
+      presetRows = (await presetService.list()).map(preset => ({
+        id: preset.id,
+        name: preset.name ?? preset.id,
+        trust: preset.trust,
+        ...(preset.broken === undefined ? {} : { broken: preset.broken }),
+      }))
+    } catch {
+      // A roster read racing a preset edit must not blank the whole page.
+    }
+  }
   return {
     general,
     models: {
@@ -369,6 +391,8 @@ async function loadSettingsData(ctx: Context, surface: Surface, tuiScope: Settin
       credentials: credentialRows,
       inspectProviders: inspect?.list().length ?? 0,
     },
+    presets: presetRows,
+    currentPreset: recordedPreset(surface.agent.session.header, surface.agent.session.events),
   }
 }
 
@@ -647,19 +671,46 @@ async function loadModels(ctx: Context, current: { provider: string; model: stri
   return entries
 }
 
+/**
+ * The preset one session's log records, newest selection winning.
+ *
+ * The creation header names the preset a session STARTED with; a later
+ * `agent-preset/selected` event (a blank-session switch) supersedes it. The
+ * same fold the agent-presets package exports, inlined to keep the TUI free
+ * of a runtime dependency on that package.
+ * @param header - the session's creation header.
+ * @param events - the session's event log, oldest first.
+ * @returns the preset id, or undefined when the session composes none.
+ */
+function recordedPreset(header: { agentPreset?: string }, events: readonly SessionEvent[]): string | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event !== undefined && event.type === 'agent-preset/selected') return event.data.agentPreset
+  }
+  return header.agentPreset
+}
+
 /** Create one agent over the current default-model selection. */
 async function createAgent(
   ctx: Context,
   cwd: string,
+  agentPreset?: string,
 ): Promise<{ agent: Agent; handle: AgentHandle; selection: ModelSelection; ref: ModelSelectionRef }> {
   const selection = ctx.agentDefaultModel.currentSelection()
   const ref: ModelSelectionRef = { current: selection, assembled: undefined }
+  const presetService = ctx.get('agentPresets') as { mount(agentCtx: Context, id?: string): Promise<unknown> } | undefined
   const handle = await ctx.agents.create({
     sessionId: SessionId(`session-${randomUUID()}`),
-    meta: { cwd },
+    meta: { cwd, ...(agentPreset === undefined ? {} : { agentPreset }) },
     agentOptions: { provider: selection.provider, model: selection.model },
-    setup: (agentCtx) => {
+    setup: async (agentCtx) => {
       installModelSelection(agentCtx, ref)
+      if (agentPreset !== undefined) {
+        // The preset's standing composition joins the agent's scope; a broken
+        // or unknown preset rejects here and rolls the creation back.
+        if (presetService === undefined) throw new Error('agent 预设服务未加载（bundle 缺 dsh-agent-presets）')
+        await presetService.mount(agentCtx, agentPreset)
+      }
     },
   })
   return { agent: handle.agent, handle, selection, ref }
@@ -884,7 +935,8 @@ async function boot(
   /** Swap the surface onto a freshly created agent (/new). */
   const newSession = async (): Promise<void> => {
     try {
-      const next = await createAgent(ctx, surface.cwd)
+      // A new session continues the preset the surface currently runs.
+      const next = await createAgent(ctx, surface.cwd, recordedPreset(surface.agent.session.header, surface.agent.session.events))
       unsubscribe()
       await currentHandle.dispose()
       currentHandle = next.handle
@@ -913,6 +965,21 @@ async function boot(
       ...(selected.reasoningEffort === undefined ? {} : { reasoningEffort: selected.reasoningEffort }),
     }
     const ref: ModelSelectionRef = { current: selection, assembled: undefined }
+    // Phase 0 — read the persisted log once (replay-validated): its header
+    // and events resolve the session's recorded preset (mounted in setup
+    // below) AND rebuild the fold after the swap, with no second read.
+    let snapshot: { header: { agentPreset?: string }; events: readonly SessionEvent[] } | undefined
+    const query = ctx.get('sessionQuery')
+    if (query !== undefined) {
+      try {
+        const read = await query.readSession(SessionId(id))
+        snapshot = { header: read.session, events: read.events }
+      } catch {
+        // The in-memory log remains the best available surface.
+      }
+    }
+    const presetId = snapshot === undefined ? undefined : recordedPreset(snapshot.header, snapshot.events)
+    const presetService = ctx.get('agentPresets') as { mount(agentCtx: Context, id?: string): Promise<unknown> } | undefined
     // Phase 1 — prepare the next agent. A failure here leaves the current
     // surface (agent and subscription) untouched: report it as a notice.
     let next: AgentHandle
@@ -924,7 +991,15 @@ async function boot(
           model: selection.model,
           ...(selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort }),
         },
-        setup: (agentCtx) => { installModelSelection(agentCtx, ref) },
+        setup: async (agentCtx) => {
+          installModelSelection(agentCtx, ref)
+          if (presetId !== undefined) {
+            // The resumed session rebuilds the composition its log was
+            // produced under (model-visible ⟺ logged).
+            if (presetService === undefined) throw new Error('agent 预设服务未加载（bundle 缺 dsh-agent-presets）')
+            await presetService.mount(agentCtx, presetId)
+          }
+        },
       })
     } catch (error) {
       return `恢复失败：${error instanceof Error ? error.message : String(error)}`
@@ -943,15 +1018,7 @@ async function boot(
       // Fold from the authoritative corpus read (persistence repair and
       // replay validation included) so the resumed transcript shows the
       // complete history; the agent's in-memory log is the fallback.
-      let events: readonly SessionEvent[] = next.agent.session.events
-      const query = ctx.get('sessionQuery')
-      if (query !== undefined) {
-        try {
-          events = (await query.readSession(SessionId(id))).events
-        } catch {
-          // The in-memory log remains the best available surface.
-        }
-      }
+      const events: readonly SessionEvent[] = snapshot?.events ?? next.agent.session.events
       const { fold, scratch } = foldFromLog(events)
       surface.fold = fold
       surface.scratch = scratch
@@ -964,11 +1031,52 @@ async function boot(
       surface.feedback = new Map()
       surface.pendingAttachments = []
       unsubscribe = subscribe(ctx, store, surface, refreshSettings)
+      // The presets page marks the CURRENT preset: republish settings so the
+      // marker follows the resumed session.
+      refreshSettings()
       void loadFeedback()
       return null
     } catch (error) {
       fail(ctx, error)
       return `恢复失败：${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+  /** Switch the surface onto a NEW session composed from one agent preset. */
+  const switchPreset = async (id: string): Promise<string | null> => {
+    // Phase 1 — compose the next agent under the target preset. A failure
+    // (unknown id, broken composition, missing service) leaves the current
+    // surface untouched: report it as a notice.
+    let next: { agent: Agent; handle: AgentHandle; selection: ModelSelection; ref: ModelSelectionRef }
+    try {
+      next = await createAgent(ctx, surface.cwd, id)
+    } catch (error) {
+      return `切换预设失败：${error instanceof Error ? error.message : String(error)}`
+    }
+    // Phase 2 — the swap: same fail-loud boundary as /new and resume so a
+    // mid-swap failure can never leave a deaf surface behind.
+    try {
+      unsubscribe()
+      await currentHandle.dispose()
+      currentHandle = next.handle
+      surface.fold = initialState()
+      surface.scratch = createScratch()
+      surface.agent = next.agent
+      surface.selection = next.ref
+      surface.currentModel = next.selection.model
+      surface.busy = false
+      surface.pendingApproval = null
+      surface.pendingQuestion = null
+      surface.feedback = new Map()
+      surface.pendingAttachments = []
+      unsubscribe = subscribe(ctx, store, surface, refreshSettings)
+      // Republish the settings pages so the presets marker flips to the new
+      // session's preset.
+      refreshSettings()
+      void loadFeedback()
+      return null
+    } catch (error) {
+      fail(ctx, error)
+      return `切换预设失败：${error instanceof Error ? error.message : String(error)}`
     }
   }
   try {
@@ -986,6 +1094,7 @@ async function boot(
         },
         newSession: () => { void newSession() },
         resumeSession: resumeSession,
+        switchPreset: switchPreset,
         renameSession: async (title) => {
           const service = ctx.get('sessionTitle') as { rename(session: unknown, title: string): unknown } | undefined
           try {

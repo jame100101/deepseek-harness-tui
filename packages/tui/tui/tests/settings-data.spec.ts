@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildJobsRows, buildPluginConfigRows, buildSessionRows, buildSettingsRows, buildSubagentRows, buildWorkflowRows,
-  collectCredentialRefs, collectPluginFields, groupProviders, sessionTitlesById,
+  collectCredentialRefs, collectPluginFields, groupProviders, sessionTitlesById, SETTINGS_PAGES,
 } from '../src/settings-data'
 import type { SettingsData } from '../src/store'
 
@@ -17,6 +17,8 @@ function modelsSettings(): { settings: SettingsData; model: string; reasoning: {
       plugins: [],
       configs: {},
       inventory: { namespaces: [], credentials: [], inspectProviders: 0 },
+      presets: [],
+      currentPreset: undefined,
     },
     model: 'deepseek-v4-pro',
     reasoning: { effort: undefined, levels: [] },
@@ -364,5 +366,57 @@ describe('sessionTitlesById', () => {
       { id: 'session-old0002', title: '重构计划' },
     ])
     expect([...liveIds].every(id => titles.get(id) !== undefined)).toBe(true)
+  })
+})
+
+describe('buildSettingsRows presets page', () => {
+  const presetsFixture = (): Parameters<typeof buildSettingsRows>[0] => {
+    const fixture = modelsSettings()
+    fixture.settings.presets = [
+      { id: 'code', name: 'Coding agent', trust: 'system' },
+      { id: 'minimal', name: 'Minimal', trust: 'system' },
+      { id: 'local', name: '本地预设', trust: 'user' },
+      { id: 'broken', name: 'Broken', trust: 'system', broken: 'unparsable agent.cordis.yml' },
+    ]
+    fixture.settings.currentPreset = 'code'
+    return fixture
+  }
+
+  it('marks the current preset and binds select actions to every other usable preset', () => {
+    const rows = buildSettingsRows(presetsFixture(), 'presets', 'zh')
+    const code = rows.find(row => row.key === 'p-code')
+    const minimal = rows.find(row => row.key === 'p-minimal')
+    expect(code?.text).toContain('● code · Coding agent · 当前')
+    expect(code?.action).toBeUndefined()
+    expect(minimal?.text).toContain('○ minimal · Minimal')
+    expect(minimal?.action).toBe('select-preset')
+    expect(minimal?.meta).toEqual({ id: 'minimal' })
+  })
+
+  it('labels user-authored presets and renders broken presets dimmed and inert', () => {
+    const rows = buildSettingsRows(presetsFixture(), 'presets', 'zh')
+    const local = rows.find(row => row.key === 'p-local')
+    const broken = rows.find(row => row.key === 'p-broken')
+    expect(local?.text).toContain('· 用户')
+    expect(local?.action).toBe('select-preset')
+    expect(broken?.text).toContain('· 损坏：unparsable agent.cordis.yml')
+    expect(broken?.dim).toBe(true)
+    expect(broken?.action).toBeUndefined()
+  })
+
+  it('shows the empty placeholder when no preset service is composed', () => {
+    const rows = buildSettingsRows(modelsSettings(), 'presets', 'zh')
+    expect(rows[1]?.text).toContain('没有可用的 agent 预设')
+  })
+
+  it('navigates to the presets page through the five-page Tab cycle', () => {
+    expect(SETTINGS_PAGES).toEqual(['general', 'models', 'plugins', 'inventory', 'presets'])
+  })
+
+  it('puts the Tab hint on every page header', () => {
+    for (const page of SETTINGS_PAGES) {
+      const rows = buildSettingsRows(presetsFixture(), page, 'zh')
+      expect(rows[0]?.text).toContain('Tab 切换模块')
+    }
   })
 })

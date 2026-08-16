@@ -104,6 +104,18 @@ export interface SettingsPluginRow {
   namespace?: string
 }
 
+/** One selectable agent preset on the /settings presets page. */
+export interface SettingsPresetRow {
+  /** Stable id (the preset directory's name). */
+  id: string
+  /** Display name from the preset's metadata; absent falls back to the id. */
+  name: string
+  /** `system` ships with the deployment; `user` was authored locally. */
+  trust: 'system' | 'user'
+  /** Why this preset cannot compose a session, absent when usable. */
+  broken?: string
+}
+
 /** One registered settings namespace on the /settings inventory page. */
 export interface SettingsNamespaceRow {
   ns: string
@@ -113,7 +125,7 @@ export interface SettingsNamespaceRow {
   secretSet: number
 }
 
-/** Everything the /settings four pages render, loaded by the plugin. */
+/** Everything the /settings five pages render, loaded by the plugin. */
 export interface SettingsData {
   general: GeneralSettings
   models: {
@@ -128,6 +140,10 @@ export interface SettingsData {
     credentials: readonly CredentialRow[]
     inspectProviders: number
   }
+  /** Agent presets the roster currently supplies (presets page). */
+  presets: readonly SettingsPresetRow[]
+  /** The preset the surface's session currently runs, when any. */
+  currentPreset: string | undefined
 }
 
 /** One background job row for the /jobs panel. */

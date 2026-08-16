@@ -121,6 +121,7 @@ interface Copy {
   credentialRemoveFailed: (error: string) => string
   killJobRequested: (id: string) => string
   resumeDone: (id: string) => string
+  presetSwitched: (id: string) => string
   invalidNumber: string
   fieldUpdated: (field: string) => string
   cancelRequested: string
@@ -209,6 +210,7 @@ const COPY: Record<Locale, Copy> = {
     credentialRemoveFailed: error => `移除失败：${error}`,
     killJobRequested: id => `已请求杀掉任务 ${id}`,
     resumeDone: id => `已恢复会话 ${id}`,
+    presetSwitched: id => `已切换到预设 ${id}（新会话生效，旧会话已存入 /sessions）`,
     invalidNumber: '请输入有效的数字',
     fieldUpdated: field => `${field} 已更新`,
     cancelRequested: '已请求取消 · 2 秒内再按 Ctrl+C 退出',
@@ -294,6 +296,7 @@ const COPY: Record<Locale, Copy> = {
     credentialRemoveFailed: error => `remove failed: ${error}`,
     killJobRequested: id => `kill requested for job ${id}`,
     resumeDone: id => `resumed session ${id}`,
+    presetSwitched: id => `switched to preset ${id} (a new session takes it over; the old one is saved under /sessions)`,
     invalidNumber: 'Please enter a valid number',
     fieldUpdated: field => `${field} updated`,
     cancelRequested: 'cancel requested · press Ctrl+C again within 2s to exit',
@@ -431,6 +434,8 @@ export interface TuiHost {
   rateMessage(messageId: string, rating: 'positive' | 'negative'): Promise<string | null>
   /** Resume one persisted session onto the surface (null on success). */
   resumeSession(sessionId: string): Promise<string | null>
+  /** Switch onto a NEW session composed from one agent preset (null on success). */
+  switchPreset(presetId: string): Promise<string | null>
   /** Write one field of a plugin's settings namespace (null on success). */
   updatePluginConfig(ns: string, patch: Record<string, unknown>): Promise<string | null>
   /** Rename the live session (explicit user title). */
@@ -456,6 +461,7 @@ function localCommands(locale: Locale): { name: string; description: string; nee
     { name: 'subagents', description: zh ? '子代理树面板' : 'subagent tree panel', needsArgs: false },
     { name: 'workflows', description: zh ? 'workflow 运行进度面板' : 'workflow run progress panel', needsArgs: false },
     { name: 'sessions', description: zh ? '列出活动会话' : 'list live sessions', needsArgs: false },
+    { name: 'presets', description: zh ? '切换 agent 预设（设置页）' : 'switch the agent preset (settings page)', needsArgs: false },
     { name: 'effort', description: zh ? '设置推理力度（off/high/max）' : 'set the reasoning effort (off/high/max)', needsArgs: true },
     { name: 'goal', description: zh ? '查看当前 goal 详情' : 'current goal details', needsArgs: false },
     { name: 'rename', description: zh ? '重命名当前会话标题' : 'rename the current session title', needsArgs: true },
@@ -1687,6 +1693,10 @@ export function App(props: {
       openPanel('sessions', 'general', query === '' ? undefined : query)
       return
     }
+    if (text === '/presets') {
+      openPanel('settings', 'presets')
+      return
+    }
     if (text === '/goal') {
       const goal = snapshot.goal
       if (goal === null) {
@@ -1961,6 +1971,22 @@ export function App(props: {
             setPanel(null)
             // The resumed transcript starts at the newest history tail:
             // drop any stale scroll offset and selection from before.
+            setTranscriptScrollOffset(0)
+            setSelectedId(null)
+          }
+        })
+        return
+      }
+      case 'select-preset': {
+        if (row.meta?.id === undefined) return
+        void props.host.switchPreset(row.meta.id).then((error) => {
+          if (error !== null) {
+            setNotice(error)
+          } else {
+            setNotice(copy.presetSwitched(row.meta?.id ?? ''))
+            setPanel(null)
+            // The preset switch starts a fresh session: drop any stale
+            // scroll offset and selection from the previous transcript.
             setTranscriptScrollOffset(0)
             setSelectedId(null)
           }

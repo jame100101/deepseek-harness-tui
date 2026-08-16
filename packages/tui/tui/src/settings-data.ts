@@ -1,5 +1,5 @@
 /**
- * Pure projections for the /settings four pages and the /jobs, /subagents,
+ * Pure projections for the /settings five pages and the /jobs, /subagents,
  * and /workflows panels: walking serialized schemastery schema JSON for
  * `credential-ref` fields (value-free by construction — only the reference
  * name, never the secret), grouping the model routes by provider, and
@@ -10,9 +10,9 @@
 import type { JobRow, PluginConfigField, SessionEntry, SettingsData, SettingsProviderRow, SubagentRow, WorkflowRow } from './store'
 
 /** One /settings page id. */
-export type SettingsPageId = 'general' | 'models' | 'plugins' | 'inventory'
+export type SettingsPageId = 'general' | 'models' | 'plugins' | 'inventory' | 'presets'
 
-export const SETTINGS_PAGES: readonly SettingsPageId[] = ['general', 'models', 'plugins', 'inventory']
+export const SETTINGS_PAGES: readonly SettingsPageId[] = ['general', 'models', 'plugins', 'inventory', 'presets']
 
 /** One displayed panel row, built by the pure projections in this module. */
 export interface PanelRow {
@@ -21,7 +21,7 @@ export interface PanelRow {
   color?: string
   dim?: boolean
   /** Which renderer action Enter triggers; absent rows are inert. */
-  action?: 'toggle-busy-enter' | 'toggle-thinking' | 'toggle-theme' | 'toggle-locale' | 'select-model' | 'select-reasoning-effort' | 'edit-credential' | 'kill-job' | 'resume-session' | 'toggle-plugin' | 'toggle-config-boolean' | 'edit-config-number' | 'edit-config-secret' | 'edit-config-string'
+  action?: 'toggle-busy-enter' | 'toggle-thinking' | 'toggle-theme' | 'toggle-locale' | 'select-model' | 'select-reasoning-effort' | 'edit-credential' | 'kill-job' | 'resume-session' | 'toggle-plugin' | 'toggle-config-boolean' | 'edit-config-number' | 'edit-config-secret' | 'edit-config-string' | 'select-preset'
   meta?: { provider?: string; model?: string; ref?: string; id?: string; effort?: string; ns?: string; field?: string; enabled?: boolean }
 }
 
@@ -43,7 +43,7 @@ function credentialState(configured: boolean, source: string | undefined, writab
 }
 
 /**
- * Project the /settings pages (general/models/plugins/inventory).
+ * Project the /settings pages (general/models/plugins/inventory/presets).
  * @param snapshot - the settings snapshot plus the current model and reasoning view.
  * @param page - which page to project.
  * @param locale - the surface language; `en` renders English copy, `zh` Chinese.
@@ -59,7 +59,7 @@ export function buildSettingsRows(
   switch (page) {
     case 'general':
       return [
-        { key: 'g-head', text: locale === 'en' ? 'General · Enter toggles options' : '常规 General · Enter 切换选项', color: 'cyan' },
+        { key: 'g-head', text: locale === 'en' ? 'General · Enter toggles options · Tab switches modules' : '常规 General · Enter 切换选项 · Tab 切换模块', color: 'cyan' },
         {
           key: 'busyEnter',
           text: locale === 'en'
@@ -91,7 +91,7 @@ export function buildSettingsRows(
         { key: 'g-foot', text: locale === 'en' ? 'Changes write to $DSH_HOME/settings.yaml (tui namespace) and apply immediately' : '变更写入 $DSH_HOME/settings.yaml（tui 命名空间）并立即生效', dim: true },
       ]
     case 'models': {
-      const rows: PanelRow[] = [{ key: 'm-head', text: locale === 'en' ? 'Models · Enter sets default · credential rows: Enter to edit' : '模型 Models · Enter 设为默认 · 凭据行 Enter 输入', color: 'cyan' }]
+      const rows: PanelRow[] = [{ key: 'm-head', text: locale === 'en' ? 'Models · Enter sets default · credential rows: Enter to edit · Tab switches modules' : '模型 Models · Enter 设为默认 · 凭据行 Enter 输入 · Tab 切换模块', color: 'cyan' }]
       const defaultProvider = data.models.providers.find(provider => provider.models.some(model => model.id === snapshot.model))?.provider
       for (const provider of data.models.providers) {
         rows.push({ key: `p-${provider.provider}`, text: `▸ ${provider.provider}`, color: 'yellow' })
@@ -135,8 +135,8 @@ export function buildSettingsRows(
       const rows: PanelRow[] = [{
         key: 'pl-head',
         text: locale === 'en'
-          ? 'Plugins · Enter toggles (writes cordis.patch.yml, hot-applied) · c opens config'
-          : '插件 Plugins · Enter 切换开关（实时写入 cordis.patch.yml，HMR 即时生效）· c 打开插件配置',
+          ? 'Plugins · Enter toggles (writes cordis.patch.yml, hot-applied) · c opens config · Tab switches modules'
+          : '插件 Plugins · Enter 切换开关（实时写入 cordis.patch.yml，HMR 即时生效）· c 打开插件配置 · Tab 切换模块',
         color: 'cyan',
       }]
       for (const plugin of data.plugins) {
@@ -156,7 +156,7 @@ export function buildSettingsRows(
       return rows
     }
     case 'inventory': {
-      const rows: PanelRow[] = [{ key: 'i-head', text: locale === 'en' ? 'Inventory · read-only' : '清单 Inventory · 只读', color: 'cyan' }]
+      const rows: PanelRow[] = [{ key: 'i-head', text: locale === 'en' ? 'Inventory · read-only · Tab switches modules' : '清单 Inventory · 只读 · Tab 切换模块', color: 'cyan' }]
       rows.push({ key: 'i-ns', text: locale === 'en' ? `${data.inventory.namespaces.length} settings namespaces` : `设置命名空间 ${data.inventory.namespaces.length} 个`, color: 'yellow' })
       for (const namespace of data.inventory.namespaces) {
         rows.push({
@@ -175,6 +175,30 @@ export function buildSettingsRows(
       }
       rows.push({ key: 'i-inspect', text: locale === 'en' ? `cordisInspect providers · ${data.inventory.inspectProviders}` : `cordisInspect providers · ${data.inventory.inspectProviders} 个` })
       rows.push({ key: 'i-foot', text: locale === 'en' ? 'Projected from settings.describe + credentials.describe + the loader tree' : '由 settings.describe + credentials.describe + loader 树投影', dim: true })
+      return rows
+    }
+    case 'presets': {
+      const rows: PanelRow[] = [{
+        key: 'p-head',
+        text: locale === 'en'
+          ? 'Presets · Enter switches (starts a new session) · Tab switches modules'
+          : '预设 Presets · Enter 切换（以该预设开新会话）· Tab 切换模块',
+        color: 'cyan',
+      }]
+      if (data.presets.length === 0) {
+        rows.push({ key: 'p-empty', text: locale === 'en' ? '(no agent presets composed — the agent-presets service is not mounted in this profile)' : '（没有可用的 agent 预设——当前 profile 未挂载 agent-presets 服务）', dim: true })
+        return rows
+      }
+      for (const preset of data.presets) {
+        const current = preset.id === data.currentPreset
+        rows.push({
+          key: `p-${preset.id}`,
+          text: `${current ? '●' : '○'} ${preset.id} · ${preset.name}${current ? (locale === 'en' ? ' · current' : ' · 当前') : ''}${preset.trust === 'user' ? (locale === 'en' ? ' · user' : ' · 用户') : ''}${preset.broken !== undefined ? (locale === 'en' ? ` · broken: ${preset.broken}` : ` · 损坏：${preset.broken}`) : ''}`,
+          ...(preset.broken !== undefined ? { dim: true } : {}),
+          ...(current || preset.broken !== undefined ? {} : { action: 'select-preset' as const, meta: { id: preset.id } }),
+        })
+      }
+      rows.push({ key: 'p-foot', text: locale === 'en' ? 'Switching starts a NEW session under that preset; the current session is saved and stays resumable from /sessions' : '切换会以该预设开启一个新会话；当前会话已保存，可随时从 /sessions 恢复', dim: true })
       return rows
     }
   }

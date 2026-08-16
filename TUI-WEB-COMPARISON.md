@@ -9,7 +9,7 @@
 
 | 维度 | Web | TUI | 状态 |
 | --- | --- | --- | --- |
-| 会话模型 | 多会话并行，侧栏切换 | 单会话进程级（同一时刻仅一个 live：/new 换新、/sessions 恢复，切换即销毁旧 agent、旧会话回到历史记录） | 🟡 |
+| 会话模型 | 多会话并行，侧栏切换 | 单会话进程级（同一时刻仅一个 live：/new 换新、/sessions 恢复、预设切换开新会话，切换即销毁旧 agent、旧会话回到历史记录） | 🟡 |
 | 布局 | 三栏可拖拽（sidebar 56–420 / center ≥640 / details） | 全屏单栏（header / transcript / permission / composer / status） | ❌ |
 | 首屏/品牌 | onboarding 流程 + 品牌页 | **宽度安全鲸鱼横幅**：13 行纯 `█ ▓ ▒ ░` 单格字符鲸鱼 + 6 行 3D `DEEPSEEK HARNESS` 标题（`█` 字形 + `░` 阴影）；Cascadia Mono / JetBrains Mono / Consolas 原生字形、无 fallback；窄终端降级为欢迎卡片、绝不折行 | ➕ |
 | 终端标签标题 | 浏览器标题 | `🐋 DeepSeek Harness`（OSC 设置，退出时恢复原标题；窄/legacy 终端降级 ✦ 品牌字形） | ➕ |
@@ -74,7 +74,8 @@
 
 | 功能 | Web | TUI | 状态 |
 | --- | --- | --- | --- |
-| 设置入口 | 弹窗，分 General/Models/Plugins/PluginInventory | /settings 四页（Tab 换页） | ✅ |
+| 设置入口 | 弹窗，分 General/Models/Plugins/PluginInventory | /settings 五页（Tab 换页：general/models/plugins/inventory/presets） | ✅ |
+| Agent 预设 | 设置内预设切换器（Web 侧栏/弹窗） | **presets 页：Enter 切换（以该预设开新会话，旧会话存入 /sessions）；当前项 ● 标记；损坏预设置灰不可选；/presets 直达** | ✅ |
 | General | 主题/语言等 | busyEnter/thinking/theme/locale 切换 | 🟡 |
 | Models | 模型目录 + 推理等级 + 自定义 provider + API key 引导弹窗 + 模型列表编辑器（增删/容量） | 模型列表 + 适配器推理等级 + 凭据读写（不回显） | 🟡 |
 | Plugins 设置 | 每命名空间结构化卡片（agent-loop/bash/shell 等，字段级表单） | 插件配置编辑器：顶层字段（bool 切换 / string/number/secret 编辑） | 🟡 |
