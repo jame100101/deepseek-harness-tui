@@ -716,6 +716,32 @@ describe('Ink 7 full-screen render', () => {
     }
   })
 
+  it('opens the startup sessions panel on mount with an optional filter', async () => {
+    const { store, capture, unmount, type } = await mount([{ kind: 'user', id: 1, text: 'hi' }], {
+      startup: { panel: { kind: 'sessions', filter: '重构' } },
+    })
+    try {
+      const snapshot = store.getSnapshot()
+      store.set({
+        ...snapshot,
+        version: snapshot.version + 1,
+        sessions: [
+          { id: 'session-aaa00001', model: '', status: 'persisted', title: '重构计划', live: false, persisted: true, createdAt: 1 },
+          { id: 'session-bbb00002', model: '', status: 'persisted', title: '修 bug', live: false, persisted: true, createdAt: 2 },
+        ],
+      })
+      // Settle Ink's next frame after the store update before asserting.
+      await type('')
+      const lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('活动会话 / 持久化会话'))).toBe(true)
+      expect(lines.some(line => line.includes('过滤 "重构"'))).toBe(true)
+      expect(lines.some(line => line.includes('session-aaa0'))).toBe(true)
+      expect(lines.some(line => line.includes('session-bbb0'))).toBe(false)
+    } finally {
+      unmount()
+    }
+  })
+
   it('routes /rename /workspace /attach /fork to the host and shows the attachment dock', async () => {
     const calls: string[] = []
     const { store, capture, unmount, type } = await mount([{ kind: 'user', id: 1, text: 'hi' }], {

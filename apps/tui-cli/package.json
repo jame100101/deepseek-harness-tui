@@ -1,0 +1,25 @@
+{
+  "name": "@deepseek-ai/dsh-tui-cli",
+  "description": "dsh-tui: a thin Claude Code-style CLI over dsh --profile tui",
+  "version": "0.1.0-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "apps/tui-cli"
+  },
+  "type": "module",
+  "bin": {
+    "dsh-tui": "bin/dsh-tui.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/dsh": "workspace:^",
+    "commander": "^15.0.0"
+  }
+}

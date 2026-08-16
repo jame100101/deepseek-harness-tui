@@ -446,6 +446,8 @@ export interface TuiHost {
   attachFile(path: string): Promise<string | null>
   /** Fork the session at the last completed turn (or the turn containing atSeq). */
   forkSession(atSeq?: number): Promise<string | null>
+  /** Boot-time panel request: open this panel (with an optional filter) once the app mounts. */
+  startup?: { panel?: { kind: PanelKind; filter?: string } }
 }
 
 /**
@@ -1690,6 +1692,14 @@ export function App(props: {
       props.host.refreshPanels()
     }
   }, [props.host])
+
+  // A launcher-provided startup panel (bare --resume picker, or an ambiguous
+  // --resume query) opens once the app mounts; the host object is stable for
+  // the surface's lifetime, so the effect runs on mount only.
+  useEffect(() => {
+    const panel = props.host.startup?.panel
+    if (panel !== undefined) openPanel(panel.kind, 'general', panel.filter)
+  }, [openPanel, props.host])
 
   const executeCommand = useCallback((raw: string): void => {
     const text = raw.trim()

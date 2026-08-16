@@ -34,7 +34,7 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 // Empty type imports carry the loader/cmdline/approval/questions/commands/llm/
 // tools Context merges the optional-service reads below depend on.
 import type {} from '@deepseek-ai/cordis-plugin-loader'
-import type {} from '@deepseek-ai/dsh-cmdline'
+import { parseCmdline } from '@deepseek-ai/dsh-cmdline'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-user-questions'
 import type {} from '@deepseek-ai/dsh-commands'
@@ -73,10 +73,24 @@ import { MessageId, ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
 import { anchorRetry, applyEvent, createScratch, foldFromLog, initialState } from './fold'
 import type { FoldScratch } from './fold'
 import type { FoldState } from './types'
-import { renderNodePlain } from './plain'
+import { renderAssistantResultPlain, renderNodePlain } from './plain'
 import { disableEntryText, enableEntryText } from './patch-toggle'
 import { collectCredentialRefs, collectPluginFields, groupProviders, sessionTitlesById } from './settings-data'
 import { createTuiStore } from './store'
+import { buildTuiStartupProgram, parseTuiStartupIntent } from './startup-args'
+import type { StartupIntent } from './startup-args'
+import {
+  EXIT_FAILURE,
+  EXIT_OK,
+  EXIT_USAGE,
+  forkCutPoint,
+  lastTurnNumber,
+  mapTurnEndToExitCode,
+  resolveContinueSession,
+  resolveResumeTarget,
+  turnEndReasonAfter,
+} from './startup'
+import type { ResumeCandidate, ResumeResolution } from './startup'
 import type {
   CredentialRow, GeneralSettings, JobRow, ModelEntry, PendingApproval, PendingQuestion, SessionEntry, SettingsData,
   SubagentRow, TuiStore, WorkflowRow,
@@ -639,15 +653,15 @@ function mountAnswerers(ctx: Context, store: TuiStore, surface: Surface): void {
   }
 }
 
-/** Request process exit through the launcher-provided host value. */
-function exitProcess(ctx: Context): void {
-  ctx.get('appExit')?.(0)
+/** Request process exit through the launcher-provided host value (bounded shutdown). */
+function requestExit(ctx: Context, code: number): void {
+  ctx.get('appExit')?.(code)
 }
 
 /** Report a boot or surface failure and request a failing exit. */
-function fail(ctx: Context, error: unknown): void {
+function fail(ctx: Context, error: unknown, code: number = EXIT_FAILURE): void {
   console.error(`dsh: ${error instanceof Error ? error.message : String(error)}`)
-  exitProcess(ctx)
+  requestExit(ctx, code)
 }
 
 /** Discover the selectable model routes from the registered LLM adapters. */
@@ -717,6 +731,59 @@ async function createAgent(
 }
 
 /**
+ * Fork the CURRENT surface session at its last completed turn (or the turn
+ * containing atSeq) into a new persisted artifact: created with the cut seed
+ * and lineage metadata (`parentSession`, `seedLength`), then disposed right
+ * away so exactly one agent — the surface's — stays live. Returns the fork's
+ * id; null when no completed turn exists to fork from.
+ * @param ctx - plugin context carrying the agent registry.
+ * @param surface - the surface whose session is forked.
+ * @param atSeq - anchor the cut to the turn containing this event seq.
+ * @returns the fork's session id, or null when there is no completed turn.
+ */
+async function createForkArtifact(ctx: Context, surface: Surface, atSeq?: number): Promise<SessionId | null> {
+  const events = surface.agent.session.events
+  const cut = forkCutPoint(events, atSeq)
+  if (cut === null) return null
+  const selection: ModelSelection = surface.selection.current ?? ctx.agentDefaultModel.currentSelection()
+  const ref: ModelSelectionRef = { current: selection, assembled: undefined }
+  const fork = await ctx.agents.create({
+    sessionId: SessionId(`session-${randomUUID()}`),
+    seed: events.slice(0, cut),
+    meta: { cwd: surface.cwd, parentSession: surface.agent.id, seedLength: cut },
+    agentOptions: {
+      provider: selection.provider,
+      model: selection.model,
+      ...(selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort }),
+    },
+    setup: (agentCtx) => { installModelSelection(agentCtx, ref) },
+  })
+  const forkId = fork.agent.id
+  // A fork is a persisted artifact to resume from /sessions, not a second
+  // live surface: dispose its handle right away so exactly ONE agent (the
+  // surface's) stays live at any time.
+  await fork.dispose()
+  return forkId
+}
+
+/**
+ * Read the launcher's inner argv into a startup intent. Embeddings without a
+ * launcher (tests, bare trees) parse the empty argument list into the
+ * default interactive intent; the launcher path runs the grammar through
+ * `parseCmdline`, whose help/version/usage handling requests process exit
+ * itself and yields null — boot must stop without creating a surface.
+ * @param ctx - plugin context carrying the optional cmdline host values.
+ * @returns the intent, or null when the invocation already exited.
+ */
+function readStartupIntent(ctx: Context): StartupIntent | null {
+  const args = ctx.get('cmdlineArgs')
+  if (args === undefined) return parseTuiStartupIntent([])
+  let intent: StartupIntent | undefined
+  parseCmdline(ctx, buildTuiStartupProgram((parsed) => { intent = parsed }))
+  return intent ?? null
+}
+
+/**
  * Create the agent, mount the store and answerers, and drive the matching
  * surface until it exits.
  * @param ctx - plugin context carrying the agent registry, default model, tool registry, settings, and credentials.
@@ -726,6 +793,10 @@ async function boot(
   ctx: Context,
   tuiScope: SettingsScope<{ busyEnter: 'queue' | 'steer'; thinking: 'collapsed' | 'expanded' }>,
 ): Promise<void> {
+  // Parse the startup argv first: help, version, and usage rejections must
+  // exit before any agent is created, and the intent routes the whole boot.
+  const intent = readStartupIntent(ctx)
+  if (intent === null) return
   // Loader siblings mount concurrently. Await the complete application before
   // creating an Agent so its scoped tools and adapters are not half-composed.
   await ctx.get('loader')?.await()
@@ -909,7 +980,9 @@ async function boot(
   }
   let unsubscribe = subscribe(ctx, store, surface, refreshSettings)
   const isTty = process.stdin.isTTY === true && process.stdout.isTTY === true
-  if (isTty) mountAnswerers(ctx, store, surface)
+  // Print mode never mounts the interactive answerers: asks fail closed,
+  // matching the non-TTY fallback semantics.
+  if (isTty && intent.mode !== 'print') mountAnswerers(ctx, store, surface)
   /** Host-command passthrough: registered slash commands dispatch without a model turn; unknown lines go to the model. */
   const dispatchOrFollowup = (text: string, steer: boolean): void => {
     const submit = (): void => {
@@ -1072,10 +1145,140 @@ async function boot(
       return `切换预设失败：${error instanceof Error ? error.message : String(error)}`
     }
   }
+  /** Print the ambiguous-resume candidates to stderr and request the usage exit. */
+  const failAmbiguous = (candidates: readonly ResumeCandidate[]): void => {
+    const cap = 10
+    const lines = candidates.slice(0, cap).map((candidate) => {
+      const title = candidate.title === undefined ? '' : ` · ${candidate.title}`
+      const cwd = candidate.cwd === undefined ? '' : ` · ${candidate.cwd}`
+      return `  ${candidate.id}${title}${cwd} · ${new Date(candidate.createdAt).toISOString()}`
+    })
+    process.stderr.write(`恢复目标不唯一，匹配到 ${candidates.length} 个会话：\n${lines.join('\n')}\n`)
+    requestExit(ctx, EXIT_USAGE)
+  }
+  /**
+   * Resolve the startup base onto the surface through the existing
+   * `resumeSession` (the two-phase swap keeps the single-live-session
+   * invariant). Returns the sessions panel to open for the interactive
+   * picker/ambiguity paths, null when the surface is ready, or 'exit' when
+   * a terminal path already requested exit.
+   */
+  const applyStartupBase = async (): Promise<{ kind: 'sessions'; filter?: string } | null | 'exit'> => {
+    switch (intent.base.kind) {
+      case 'new': return null
+      case 'continue': {
+        const query = ctx.get('sessionQuery')
+        if (query === undefined) { fail(ctx, new Error('会话查询服务未加载，无法恢复会话')); return 'exit' }
+        let id: SessionId | null
+        try {
+          id = await resolveContinueSession(query, process.cwd())
+        } catch (error) {
+          fail(ctx, error)
+          return 'exit'
+        }
+        if (id === null) {
+          fail(ctx, new Error(`当前目录没有可恢复的会话（${process.cwd()}）；--continue 不会恢复其他目录的会话`))
+          return 'exit'
+        }
+        const error = await resumeSession(String(id))
+        if (error !== null) { fail(ctx, new Error(error)); return 'exit' }
+        return null
+      }
+      case 'resume-picker': return { kind: 'sessions' }
+      case 'resume': {
+        const query = ctx.get('sessionQuery')
+        if (query === undefined) { fail(ctx, new Error('会话查询服务未加载，无法恢复会话')); return 'exit' }
+        let resolution: ResumeResolution
+        try {
+          resolution = await resolveResumeTarget(query, intent.base.query)
+        } catch (error) {
+          fail(ctx, error)
+          return 'exit'
+        }
+        if (resolution.kind === 'none') { fail(ctx, new Error(`找不到会话：${intent.base.query}`)); return 'exit' }
+        if (resolution.kind === 'ambiguous') {
+          // Print mode never opens the interactive picker: list the
+          // candidates and fail with the usage code.
+          if (intent.mode === 'print') { failAmbiguous(resolution.candidates); return 'exit' }
+          return { kind: 'sessions', filter: intent.base.query }
+        }
+        const error = await resumeSession(String(resolution.id))
+        if (error !== null) { fail(ctx, new Error(error)); return 'exit' }
+        return null
+      }
+    }
+  }
+  /**
+   * One-shot --print executor: submit through the unified dispatch path,
+   * wait for the turn to settle, print only the assistant result to stdout,
+   * and exit with the turn's end code. No Ink, no composer, no mouse
+   * tracking, no interactive input.
+   */
+  const runPrintOnce = async (): Promise<void> => {
+    const prompt = intent.prompt
+    if (prompt === undefined) {
+      fail(ctx, new Error('--print 需要一个任务参数'))
+      return
+    }
+    if (prompt.startsWith('/')) {
+      // TUI-local slash commands have no print surface; only host commands
+      // and plain prompts proceed.
+      const known = ctx.get('commands')?.list(surface.agent) ?? []
+      if (!known.some(command => command.name === prompt.split(' ')[0])) {
+        process.stderr.write('(print mode: this command is only available in the interactive TUI)\n')
+        requestExit(ctx, EXIT_USAGE)
+        return
+      }
+    }
+    const firstCount = store.getSnapshot().nodes.length
+    const turnBefore = lastTurnNumber(surface.agent.session.events)
+    dispatchOrFollowup(prompt, false)
+    try {
+      await surface.agent.whenIdle()
+    } catch {
+      // A signal-triggered tree disposal rejects the idle wait; the launcher owns that exit code.
+      return
+    }
+    const result = renderAssistantResultPlain(store.getSnapshot().nodes.slice(firstCount))
+    if (result !== '') process.stdout.write(result + '\n')
+    const reason = turnEndReasonAfter(surface.agent.session.events, turnBefore)
+    requestExit(ctx, reason === undefined ? (prompt.startsWith('/') ? EXIT_OK : EXIT_FAILURE) : mapTurnEndToExitCode(reason))
+  }
   try {
+    // Resolve the base session FIRST, in every mode: `-c -p` and
+    // `-r <id> -p` must resume before the print turn submits, or the task
+    // would land on the fresh boot session instead of the resumed history.
+    const panel = await applyStartupBase()
+    if (panel === 'exit') return
+    if (intent.fork && panel !== null) {
+      fail(ctx, new Error('--fork-session 的恢复目标不唯一，无法确定分叉基底'), EXIT_USAGE)
+      return
+    }
+    if (intent.fork) {
+      let forkId: SessionId | null
+      try {
+        forkId = await createForkArtifact(ctx, surface)
+      } catch (error) {
+        fail(ctx, error)
+        return
+      }
+      if (forkId === null) {
+        fail(ctx, new Error('没有已完成回合可分叉'))
+        return
+      }
+      const error = await resumeSession(String(forkId))
+      if (error !== null) {
+        fail(ctx, new Error(error))
+        return
+      }
+    }
+    if (intent.mode === 'print') {
+      await runPrintOnce()
+      return
+    }
     if (isTty) {
       const { runInk } = await import('./render')
-      await runInk(store, {
+      const inkDone = runInk(store, {
         submit: (text, steer) => { dispatchOrFollowup(text, steer) },
         cancel: () => { surface.agent.cancel({ kind: 'user' }) },
         exit: () => {
@@ -1083,7 +1286,7 @@ async function boot(
           // when the user quits mid-turn; nothing here may throw, or the
           // launcher's teardown race escalates into a failing exit code.
           try { surface.agent.cancel({ kind: 'user' }) } catch {}
-          exitProcess(ctx)
+          requestExit(ctx, EXIT_OK)
         },
         newSession: () => { void newSession() },
         resumeSession: resumeSession,
@@ -1129,36 +1332,8 @@ async function boot(
         },
         forkSession: async (atSeq) => {
           try {
-            const events = surface.agent.session.events
-            const lastSeq = events.at(-1)?.seq ?? -1
-            const anchored = atSeq === undefined
-              ? undefined
-              : events.find(event => event.type === 'turn/end' && event.seq >= atSeq)
-            const boundary = anchored
-              ?? (atSeq === undefined || atSeq > lastSeq
-                ? events.findLast(event => event.type === 'turn/end')
-                : undefined)
-            if (boundary === undefined) return '没有已完成回合可分叉'
-            let cut = boundary.seq + 1
-            while (cut < events.length && events[cut]?.type !== 'turn/start') cut++
-            const selection: ModelSelection = surface.selection.current ?? ctx.agentDefaultModel.currentSelection()
-            const ref: ModelSelectionRef = { current: selection, assembled: undefined }
-            const fork = await ctx.agents.create({
-              sessionId: SessionId(`session-${randomUUID()}`),
-              seed: events.slice(0, cut),
-              meta: { cwd: surface.cwd, parentSession: surface.agent.id, seedLength: cut },
-              agentOptions: {
-                provider: selection.provider,
-                model: selection.model,
-                ...(selection.reasoningEffort === undefined ? {} : { reasoningEffort: selection.reasoningEffort }),
-              },
-              setup: (agentCtx) => { installModelSelection(agentCtx, ref) },
-            })
-            // A fork is a persisted artifact to resume from /sessions, not a
-            // second live surface: dispose its handle right away so exactly
-            // ONE agent (the surface's) stays live at any time.
-            await fork.dispose()
-            return null
+            const forkId = await createForkArtifact(ctx, surface, atSeq)
+            return forkId === null ? '没有已完成回合可分叉' : null
           } catch (error) {
             return `分叉失败：${error instanceof Error ? error.message : String(error)}`
           }
@@ -1353,10 +1528,21 @@ async function boot(
           }
           return feedbackErrorText(result.error)
         },
+        ...(panel === null ? {} : { startup: { panel } }),
       })
+      // The startup prompt is a real user submission through the unified
+      // dispatch path once Ink owns the terminal — never a simulated Enter.
+      if (intent.prompt !== undefined) dispatchOrFollowup(intent.prompt, false)
+      await inkDone
     } else {
+      if (panel !== null) {
+        // The sessions picker (bare --resume or an ambiguous query) needs an
+        // interactive surface; the line-driven fallback has no panel.
+        fail(ctx, new Error('--resume 面板需要交互终端'), EXIT_USAGE)
+        return
+      }
       const { runLegacy } = await import('./legacy')
-      await runLegacy({
+      const legacyDone = runLegacy({
         onPrompt: async (text) => {
           // TUI-local slash commands (panels, selection, sessions, presets…)
           // have no linear-mode surface. Only host commands and plain
@@ -1378,8 +1564,10 @@ async function boot(
             if (rendered !== '') process.stdout.write(rendered + '\n')
           }
         },
-        onExit: () => exitProcess(ctx),
+        onExit: () => requestExit(ctx, EXIT_OK),
       })
+      if (intent.prompt !== undefined) dispatchOrFollowup(intent.prompt, false)
+      await legacyDone
     }
   } catch (error) {
     fail(ctx, error)

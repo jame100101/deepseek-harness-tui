@@ -367,6 +367,23 @@ export function renderNodePlain(node: TuiNode): string {
   }
 }
 
+/**
+ * Render the assistant-result portion of settled rows for `--print` stdout:
+ * only assistant message texts, joined, with no glyph prefixes, tool rows,
+ * status rows, or banners — the output must be safe for scripts, pipelines,
+ * and command substitution.
+ * @param nodes - the settled rows produced by the run.
+ * @returns the joined assistant texts, or '' when the run produced none.
+ */
+export function renderAssistantResultPlain(nodes: readonly TuiNode[]): string {
+  return nodes
+    .filter(node => node.kind === 'assistant')
+    .map(node => node.text)
+    .filter(text => text !== '')
+    .join('\n')
+    .trimEnd()
+}
+
 /** The v0.0.13 welcome line shown before the first user message. */
 export const WELCOME = 'dsh-tui v0.0.13 — 输入任务开始工作；/ 查看命令，/help 帮助，/quit 退出。'
 

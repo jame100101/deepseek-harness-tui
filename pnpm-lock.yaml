@@ -356,6 +356,15 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
 
+  apps/tui-cli:
+    dependencies:
+      '@deepseek-ai/dsh':
+        specifier: workspace:^
+        version: link:../cli
+      commander:
+        specifier: ^15.0.0
+        version: 15.0.0
+
   apps/web:
     dependencies:
       '@deepseek-ai/dsh-client-web':
@@ -7851,6 +7860,9 @@ importers:
 
   packages/tui/tui:
     dependencies:
+      commander:
+        specifier: ^15.0.0
+        version: 15.0.0
       ink:
         specifier: 7.1.1
         version: 7.1.1(@types/react@19.2.18)(react@19.2.8)
