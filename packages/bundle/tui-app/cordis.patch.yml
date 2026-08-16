@@ -28,6 +28,14 @@
     - id: code-runtime
       name: '@deepseek-ai/dsh-code-runtime-worker-thread'
 
+    # The host half of the self-modification toolset (cordisInspect +
+    # dynamicCordisRunner). The `cordis` agent preset's tool-cordis row waits
+    # on these two services; without them that preset cannot mount. The CLIENT
+    # half stays Web-only (it injects the Web runtime's modules/slots/remote),
+    # so the tui composition mounts only this host row — mirroring web-app.
+    - id: cordis-host-runner
+      name: '@deepseek-ai/dsh-cordis-host-runner'
+
     # Durable per-message feedback sidecar (Web parity for 👍/👎): the base
     # bundle already loads session-persistence; storage + storage-domain host
     # the sidecar domain (the web-app rows, mirrored).
