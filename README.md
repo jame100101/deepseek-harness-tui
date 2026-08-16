@@ -121,9 +121,11 @@ The first-load screen prints the DeepSeek whale banner; type a task and press
 | `/new` | start a fresh session |
 | `/quit` / `/exit` | save and exit |
 
-Typing `/` opens the **command palette**: `↑`/`↓` select, `Enter` run,
-`Tab` complete arguments, `Esc` dismiss. Unknown `/…` lines fall through to the
-registered host commands, and unknown text becomes a model message.
+Typing `/` opens the **command palette**: commands list
+**alphabetically (a–z)**, `↑`/`↓` select, `Enter` run, `Tab` complete
+arguments, `Esc` dismiss. Host commands get Chinese descriptions in the zh
+locale. Unknown `/…` lines fall through to the registered host commands, and
+unknown text becomes a model message.
 
 ### Keyboard & mouse map
 
@@ -170,7 +172,8 @@ registered host commands, and unknown text becomes a model message.
 - **Terminal title** — sets `🐋 DeepSeek Harness` on the tab and restores the
   previous title on exit.
 - **Non-TTY fallback** — piped/CI runs fall back to a line-driven plain renderer
-  with fail-closed answerers.
+  with fail-closed answerers; TUI-local slash commands print a "linear mode"
+  notice instead of leaking UI directives into a model turn.
 
 ### Sessions & settings
 
@@ -328,7 +331,7 @@ pnpm exec dsh --profile tui   # 构建产物启动（约 2.7s，推荐日常使�
 | `/new` | 开始新会话（旧会话回到历史记录） |
 | `/quit` / `/exit` | 保存并退出 |
 
-`/` 会弹出命令面板（↑↓ 选择、Enter 执行、Tab 补全、Esc 取消）。
+`/` 会弹出命令面板（命令按 a→z 字母排序，↑↓ 选择、Enter 执行、Tab 补全、Esc 取消）；zh 界面下 host 命令显示中文说明。
 
 **按键**
 
