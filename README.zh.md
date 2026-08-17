@@ -16,8 +16,8 @@
 > Windows, macOS, and Linux. Not stable yet. See [Quick Start](#quick-start).
 
 <p align="center">
-  <img src="assets/tui-session-chat.png" alt="dsh-tui session screenshot" width="46%">
-  <img src="assets/tui-session-panel.png" alt="dsh-tui full-screen transcript screenshot" width="46%">
+  <img src="https://camo.githubusercontent.com/130fe19ff42a0b7fcf48e12109046841d9164741bb8713634af0c1371946da1f/68747470733a2f2f72617763646e2e6769746861636b2e636f6d2f6a616d653130303130312f646565707365656b2d6861726e6573732d7475692f313038623531396133373135666433393035613832373236623535353364646237343235653064382f6173736574732f7475692d73657373696f6e2d636861742e706e67" alt="dsh-tui session screenshot" width="46%">
+  <img src="https://camo.githubusercontent.com/70b5b656de08ec7ea88a28d629c9f92d424457788796c360a85fa7d45db3ecef/68747470733a2f2f72617763646e2e6769746861636b2e636f6d2f6a616d653130303130312f646565707365656b2d6861726e6573732d7475692f313038623531396133373135666433393035613832373236623535353364646237343235653064382f6173736574732f7475692d73657373696f6e2d70616e656c2e706e67" alt="dsh-tui full-screen transcript screenshot" width="46%">
 </p>
 
 `dsh-tui` is a **local terminal assistant** for the DeepSeek Harness agent
