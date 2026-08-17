@@ -25,12 +25,33 @@ persistent sessions, and settings panels.
 
 ## Quick Start
 
-### 1. Requirements
+### 1. Install the environment
 
-- Node.js `^22.19 || >=24`
-- npm
+`dsh-tui` needs **Node.js `^22.19 || >=24`** — npm is bundled with Node, so
+installing Node installs npm too.
 
-### 2. Install
+Check what is already there:
+
+```sh
+node --version   # must be ^22.19 || >=24
+npm --version
+```
+
+If Node is missing or too old, install it one of these ways:
+
+- **Windows** — the official installer from
+  [nodejs.org](https://nodejs.org/en/download), or
+  `winget install OpenJS.NodeJS.LTS`
+- **macOS** — `brew install node`, or the nodejs.org installer
+- **Ubuntu / Debian** — use
+  [NodeSource](https://github.com/nodesource/distributions) (Node 24 LTS);
+  the distro `apt` package is usually too old
+- **Any platform** — [nvm](https://github.com/nvm-sh/nvm) (nvm-windows on
+  Windows) to switch Node versions freely
+
+Re-run the version checks above, then continue.
+
+### 2. Install dsh-tui
 
 ```sh
 npm install -g @jame100101/dsh-tui@rc
@@ -178,6 +199,13 @@ For a feature-by-feature comparison with the Web frontend, see
 （dist-tag：`rc`）。Windows / macOS / Linux 干净环境安装已验证，尚未 stable。
 
 ### 快速开始
+
+**环境准备**：需要 Node.js `^22.19 || >=24`（npm 随 Node 自带）。先执行
+`node --version` 和 `npm --version` 检查；没有或版本太旧时：Windows 用
+[nodejs.org](https://nodejs.org/en/download) 安装包或
+`winget install OpenJS.NodeJS.LTS`，macOS 用 `brew install node`，
+Ubuntu/Debian 用 NodeSource（系统 apt 的 nodejs 通常太旧），任意平台可用
+nvm。
 
 ```sh
 npm install -g @jame100101/dsh-tui@rc      # 安装（固定版本：@0.1.0-rc.7）
