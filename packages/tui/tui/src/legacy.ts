@@ -6,7 +6,7 @@
  */
 
 import { createInterface } from 'node:readline'
-import { HELP, WELCOME } from './plain'
+import { helpText, welcomeText } from './plain'
 
 /** Handlers the linear REPL drives; prompt settlement belongs to the caller. */
 export interface LegacyHandlers {
@@ -19,10 +19,11 @@ export interface LegacyHandlers {
 /**
  * Run the line-driven fallback until `/quit`, `/exit`, or EOF.
  * @param handlers - prompt/exit callbacks.
+ * @param locale - UI chrome language.
  */
-export async function runLegacy(handlers: LegacyHandlers): Promise<void> {
+export async function runLegacy(handlers: LegacyHandlers, locale: 'zh' | 'en' = 'zh'): Promise<void> {
   const out = process.stdout
-  out.write(WELCOME + '\n')
+  out.write(welcomeText(locale) + '\n')
   out.write('(linear mode: stdin/stdout is not a TTY)\n')
   const rl = createInterface({ input: process.stdin, crlfDelay: Infinity })
   for await (const line of rl) {
@@ -30,7 +31,7 @@ export async function runLegacy(handlers: LegacyHandlers): Promise<void> {
     if (text === '') continue
     if (text === '/quit' || text === '/exit') break
     if (text === '/help') {
-      out.write(HELP + '\n')
+      out.write(helpText(locale) + '\n')
       continue
     }
     if (text === '/clear') continue

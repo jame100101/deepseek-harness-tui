@@ -1,6 +1,6 @@
 # `@deepseek-ai/dsh-tui`
 
-English | [中文](README.zh.md)
+[English](README.md) | 中文
 
 The dsh terminal surface: an in-process TUI plugin restructured after the **DamnatioX TypeScript TUI** (Ink 7 + React 19). v0.0.13 builds on the v0.0.12 surface ([TUI frontend plan](../../../dsh-TUI-前端完整方案.md)):
 

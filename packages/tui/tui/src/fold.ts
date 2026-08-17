@@ -209,6 +209,34 @@ export function createScratch(): FoldScratch {
   }
 }
 
+/** Scratch instances whose node and trace arrays are private to one replay. */
+const batchScratches = new WeakSet<FoldScratch>()
+
+/** Return a writable node array without copying a replay-private buffer. */
+function writableNodes(nodes: TuiNode[], scratch: FoldScratch): TuiNode[] {
+  return batchScratches.has(scratch) ? nodes : [...nodes]
+}
+
+/** Append one node while preserving immutable publication for live folds. */
+function appendNode(nodes: TuiNode[], node: TuiNode, scratch: FoldScratch): TuiNode[] {
+  const next = writableNodes(nodes, scratch)
+  next.push(node)
+  return next
+}
+
+/** Append one trace while preserving immutable publication for live folds. */
+function appendTrace(
+  traces: FoldState['trace'],
+  entry: FoldState['trace'][number],
+  scratch: FoldScratch,
+): FoldState['trace'] {
+  if (batchScratches.has(scratch)) {
+    traces.push(entry)
+    return traces
+  }
+  return [...traces, entry]
+}
+
 /**
  * Fold one complete raw event log into transcript state (resume replay).
  * The same prefix contract as {@link applyEvent}: a persisted session's
@@ -218,8 +246,13 @@ export function createScratch(): FoldScratch {
  */
 export function foldFromLog(events: readonly SessionEvent[]): { fold: FoldState; scratch: FoldScratch } {
   const scratch = createScratch()
+  batchScratches.add(scratch)
   let fold = initialState()
-  for (const event of events) fold = applyEvent(fold, event, scratch)
+  try {
+    for (const event of events) fold = applyEvent(fold, event, scratch)
+  } finally {
+    batchScratches.delete(scratch)
+  }
   return { fold, scratch }
 }
 
@@ -246,7 +279,7 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
   let compaction = state.compaction
   switch (event.type) {
     case 'turn/start': {
-      traces = [...traces, trace(event.seq, `turn ${event.data.turn} start`)]
+      traces = appendTrace(traces, trace(event.seq, `turn ${event.data.turn} start`), scratch)
       stats = { ...stats, turns: stats.turns + 1 }
       scratch.turnNumber = event.data.turn
       scratch.turnLlms = 0
@@ -259,19 +292,19 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
       const text = blocksText(event.data.content, 0)
       const source = event.data.source
       if (source.kind === 'user') {
-        nodes = [...nodes, { kind: 'user', id: event.seq, text }]
+        nodes = appendNode(nodes, { kind: 'user', id: event.seq, text }, scratch)
       } else {
         // Injected context (workspace instructions, skill catalogs, notices…)
         // renders as a collapsed disclosure, like the Web context row.
-        nodes = [...nodes, { kind: 'context', id: event.seq, text, producer: producerOf(source) }]
+        nodes = appendNode(nodes, { kind: 'context', id: event.seq, text, producer: producerOf(source) }, scratch)
       }
-      traces = [...traces, trace(event.seq, `user (${source.kind}): ${firstLine(text)}`)]
+      traces = appendTrace(traces, trace(event.seq, `user (${source.kind}): ${firstLine(text)}`), scratch)
       break
     }
     case 'step/start': {
       live = { text: '', think: '', thinkSince: null }
       scratch.step = { startTime: event.time, firstChunkTime: null, lastChunkTime: null, usage: null }
-      traces = [...traces, trace(event.seq, `step ${event.data.turn}.${event.data.step} start`)]
+      traces = appendTrace(traces, trace(event.seq, `step ${event.data.turn}.${event.data.step} start`), scratch)
       stats = { ...stats, steps: stats.steps + 1 }
       break
     }
@@ -297,12 +330,12 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
     }
     case 'assistant/message': {
       if (live !== null && live.think !== '') {
-        nodes = [...nodes]
+        nodes = writableNodes(nodes, scratch)
         flushThink(nodes, event.seq, live.think, Math.max(0, event.time - (live.thinkSince ?? event.time)))
       }
       const text = blocksText(event.data.message.content, 0)
-      nodes = [...nodes, { kind: 'assistant', id: event.seq, text, messageId: event.data.message.id }]
-      traces = [...traces, trace(event.seq, `assistant (${text.length} chars)`)]
+      nodes = appendNode(nodes, { kind: 'assistant', id: event.seq, text, messageId: event.data.message.id }, scratch)
+      traces = appendTrace(traces, trace(event.seq, `assistant (${text.length} chars)`), scratch)
       if (event.data.usage !== undefined && scratch.step !== null && scratch.step.usage === null) {
         scratch.step.usage = usageOf(event.data.usage)
       }
@@ -313,11 +346,11 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
       // The reasoning streamed before this step's model call asked for tools:
       // flush it as a settled think row so it renders before the tool rows.
       if (live !== null && live.think !== '') {
-        nodes = [...nodes]
+        nodes = writableNodes(nodes, scratch)
         flushThink(nodes, event.seq, live.think, Math.max(0, event.time - (live.thinkSince ?? event.time)))
         live = { ...live, think: '', thinkSince: null }
       }
-      nodes = [...nodes, {
+      nodes = appendNode(nodes, {
         kind: 'tool',
         id: event.seq,
         detail: `${event.data.name} ${previewArgs(event.data.arguments)}`,
@@ -326,9 +359,9 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
         args: parseArgsLenient(event.data.arguments),
         callCard: null,
         resultCard: null,
-      }]
+      }, scratch)
       scratch.toolStarts.set(event.data.callId, event.time)
-      traces = [...traces, trace(event.seq, `tool ${event.data.name}`)]
+      traces = appendTrace(traces, trace(event.seq, `tool ${event.data.name}`), scratch)
       break
     }
     case 'tool/result': {
@@ -338,11 +371,11 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
       if (index >= 0) {
         const running = nodes[index]
         if (running !== undefined && running.kind === 'tool') {
-          nodes = [...nodes]
+          nodes = writableNodes(nodes, scratch)
           nodes[index] = { ...running, status, text }
         }
       } else {
-        nodes = [...nodes, { kind: 'tool', id: event.seq, detail: 'tool', status, text, args: undefined, callCard: null, resultCard: null }]
+        nodes = appendNode(nodes, { kind: 'tool', id: event.seq, detail: 'tool', status, text, args: undefined, callCard: null, resultCard: null }, scratch)
       }
       const start = scratch.toolStarts.get(toolResultCallId(event))
       if (start !== undefined) {
@@ -350,11 +383,11 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
         stats = { ...stats, toolMs: stats.toolMs + duration }
         scratch.turnTools += duration
       }
-      traces = [...traces, trace(event.seq, `result ${status}`)]
+      traces = appendTrace(traces, trace(event.seq, `result ${status}`), scratch)
       break
     }
     case 'step/end': {
-      traces = [...traces, trace(event.seq, `step ${event.data.turn}.${event.data.step} end`)]
+      traces = appendTrace(traces, trace(event.seq, `step ${event.data.turn}.${event.data.step} end`), scratch)
       if (scratch.step !== null) {
         const before = stats
         stats = commitStep(stats, scratch.step)
@@ -367,7 +400,7 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
     }
     case 'turn/end': {
       const reason = event.data.reason
-      traces = [...traces, trace(event.seq, `turn ${event.data.turn} end (${reason.kind})`)]
+      traces = appendTrace(traces, trace(event.seq, `turn ${event.data.turn} end (${reason.kind})`), scratch)
       // The per-turn tail: LLM wall time, tool wall time, and average TTFT
       // for this turn, mirroring the Web turn-tail statistics.
       const tailParts = [
@@ -375,16 +408,16 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
         `工具 ${formatMs(scratch.turnTools)}`,
         ...(scratch.turnTtftSteps > 0 ? [`TTFT ${formatMs(scratch.turnTtftMs / scratch.turnTtftSteps)}`] : []),
       ]
-      nodes = [...nodes, { kind: 'status', id: event.seq, error: false, text: `└ turn ${scratch.turnNumber} · ${tailParts.join(' · ')}` }]
+      nodes = appendNode(nodes, { kind: 'status', id: event.seq, error: false, text: `└ turn ${scratch.turnNumber} · ${tailParts.join(' · ')}` }, scratch)
       if (reason.kind === 'error') {
-        nodes = [...nodes, {
+        nodes = appendNode(nodes, {
           kind: 'status',
           id: event.seq,
           error: true,
           text: `turn failed: ${reason.error.code}: ${reason.error.message}`.slice(0, MAX_STATUS_TEXT),
-        }]
+        }, scratch)
       } else if (reason.kind === 'aborted') {
-        nodes = [...nodes, { kind: 'status', id: event.seq, error: false, text: 'cancelled' }]
+        nodes = appendNode(nodes, { kind: 'status', id: event.seq, error: false, text: 'cancelled' }, scratch)
       }
       break
     }
@@ -409,14 +442,14 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
     }
     case 'command/done': {
       if (event.data.kind === 'success' && event.data.text !== undefined && event.data.text !== '') {
-        nodes = [...nodes, { kind: 'status', id: event.seq, error: false, text: event.data.text.slice(0, MAX_STATUS_TEXT) }]
+        nodes = appendNode(nodes, { kind: 'status', id: event.seq, error: false, text: event.data.text.slice(0, MAX_STATUS_TEXT) }, scratch)
       } else if (event.data.kind === 'error') {
-        nodes = [...nodes, {
+        nodes = appendNode(nodes, {
           kind: 'status',
           id: event.seq,
           error: true,
           text: `command failed: ${event.data.text ?? 'unknown error'}`.slice(0, MAX_STATUS_TEXT),
-        }]
+        }, scratch)
       }
       break
     }
@@ -444,36 +477,36 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
         },
       }
       const chainIndex = lastRetryChain(nodes, data.retryId)
-      nodes = [...nodes]
+      nodes = writableNodes(nodes, scratch)
       if (chainIndex === -1) nodes.push(next)
       else nodes[chainIndex] = next
-      traces = [...traces, trace(event.seq, `retry ${data.retry}/${data.mode === 'normal' ? String(data.maxRetries) : '∞'} · ${formatMs(data.delayMs)} · ${failure.code}`)]
+      traces = appendTrace(traces, trace(event.seq, `retry ${data.retry}/${data.mode === 'normal' ? String(data.maxRetries) : '∞'} · ${formatMs(data.delayMs)} · ${failure.code}`), scratch)
       break
     }
     case 'llm/retry-started': {
       const chainIndex = lastRetryChain(nodes, event.data.retryId)
       const prior = nodes[chainIndex]
       if (prior !== undefined && prior.kind === 'retry') {
-        nodes = [...nodes]
+        nodes = writableNodes(nodes, scratch)
         nodes[chainIndex] = { ...prior, started: true, retryAt: 0 }
       }
       break
     }
     case 'plan/mode': {
       plan = { active: event.data.active, pending: false }
-      nodes = [...nodes, {
+      nodes = appendNode(nodes, {
         kind: 'status',
         id: event.seq,
         error: false,
         text: event.data.active ? '◈ plan 模式开启' : '◈ plan 模式关闭',
-      }]
+      }, scratch)
       break
     }
     case 'goal/change': {
       const change = event.data
       if (change.operation === 'clear') {
         goal = null
-        nodes = [...nodes, { kind: 'status', id: event.seq, error: false, text: '◆ goal 已清除' }]
+        nodes = appendNode(nodes, { kind: 'status', id: event.seq, error: false, text: '◆ goal 已清除' }, scratch)
       } else {
         const snapshot = change.goal
         const next: GoalRow = {
@@ -496,12 +529,12 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
         const objective = next.objective.length <= MAX_GOAL_PREVIEW
           ? next.objective
           : `${next.objective.slice(0, MAX_GOAL_PREVIEW)}…`
-        nodes = [...nodes, {
+        nodes = appendNode(nodes, {
           kind: 'status',
           id: event.seq,
           error: false,
           text: `◆ goal ${change.operation} · ${phaseLabel} · ${objective}`,
-        }]
+        }, scratch)
       }
       break
     }
@@ -513,7 +546,7 @@ export function applyEvent(state: FoldState, event: SessionEvent, scratch: FoldS
     }
     case 'compaction/end': {
       compaction = false
-      nodes = [...nodes, { kind: 'status', id: event.seq, error: false, text: 'compacted' }]
+      nodes = appendNode(nodes, { kind: 'status', id: event.seq, error: false, text: 'compacted' }, scratch)
       break
     }
     default:

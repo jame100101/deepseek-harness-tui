@@ -1,9 +1,15 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { bundleRowPackages, externalDependencies, runtimeClosure, semverMax } from '../scripts/assemble-runtime.mjs'
 
 const root = join(import.meta.dirname, '..', '..', '..')
+
+function allFiles(directory: string): string[] {
+  return readdirSync(directory, { recursive: true, withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .map(entry => join(entry.parentPath, entry.name))
+}
 
 describe('semverMax', () => {
   it('picks the numerically larger version, not the lexical one', () => {
@@ -59,16 +65,44 @@ describe('externalDependencies', () => {
     const deps = externalDependencies(root, runtimeClosure(root))
     expect(deps.get('commander')).toBe('15.0.0')
   })
+
+  it('promotes dependencies of the runtime-local patched Ink payload', () => {
+    const inkRoot = join(root, 'packages/tui/tui/node_modules/ink')
+    const inkManifest = JSON.parse(readFileSync(join(inkRoot, 'package.json'), 'utf8')) as {
+      name: string
+      dependencies: Record<string, string>
+    }
+    const deps = externalDependencies(root, runtimeClosure(root), [inkRoot])
+    expect(deps.get('es-toolkit')).toBe('1.49.0')
+    expect(deps.get('signal-exit')).toBe('3.0.7')
+    for (const name of Object.keys(inkManifest.dependencies)) expect(deps.has(name)).toBe(true)
+  })
 })
 
 describe('assembled runtime (when present)', () => {
-  it('ships the launcher bin, the agent-preset config, and the bundle patches', () => {
+  it('ships the launcher bin, the agent-preset config, the bundle patches, and patched Ink', () => {
     const runtime = join(root, 'apps/tui-cli/runtime')
     if (!existsSync(runtime)) return // built at release time; skip when absent
     expect(existsSync(join(runtime, 'lib/bin.js'))).toBe(true)
     expect(existsSync(join(runtime, 'config/agent-presets'))).toBe(true)
     expect(existsSync(join(runtime, 'node_modules/@deepseek-ai/dsh-tui-app/cordis.patch.yml'))).toBe(true)
+    const cursorHelpers = readFileSync(join(runtime, 'node_modules/ink/build/cursor-helpers.js'), 'utf8')
+    const logUpdate = readFileSync(join(runtime, 'node_modules/ink/build/log-update.js'), 'utf8')
+    const outputRenderer = readFileSync(join(runtime, 'node_modules/ink/build/output.js'), 'utf8')
+    expect(cursorHelpers).toContain('outputCursorRow - cursorPosition.y')
+    expect(cursorHelpers).toContain('input.outputCursorRow')
+    expect(logUpdate).toContain('outputCursorRow: lines.length - 1')
+    expect(logUpdate).toContain('outputCursorRow: nextLines.length - 1')
+    expect(outputRenderer).toContain("findLastIndex(cell => cell.value === '\\uE000')")
+    expect(outputRenderer).toContain("value: '█'")
+    expect(outputRenderer).toContain('positionedRightEdge')
+    expect(allFiles(runtime).some(file => file.endsWith('.tsbuildinfo'))).toBe(false)
     const manifest = JSON.parse(readFileSync(join(runtime, 'package.json'), 'utf8')) as { bin?: { dsh?: string } }
     expect(manifest.bin?.dsh).toBe('lib/bin.js')
+    const wrapperManifest = JSON.parse(readFileSync(join(root, 'apps/tui-cli/package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>
+    }
+    expect(wrapperManifest.dependencies?.['es-toolkit']).toBe('1.49.0')
+    expect(wrapperManifest.dependencies?.['signal-exit']).toBe('3.0.7')
   })
 })

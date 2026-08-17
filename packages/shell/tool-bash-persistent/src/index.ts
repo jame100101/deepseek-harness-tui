@@ -15,7 +15,10 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 const TRUNCATED_MESSAGE = '<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>'
 const LOST_PREFIX_MESSAGE = '<response clipped><NOTE>The beginning of this command output was dropped by the terminal scrollback limit. The following text is the earliest retained output.</NOTE>\n'
 const SHELL_RESET_MESSAGE = 'The persistent bash shell was reset; the next bash call starts from the workspace with a fresh current directory and environment.'
-const SHELL_PROMPT = '__DSH_PERSISTENT_BASH_PROMPT__ '
+// The shipped `shell` backend recognizes this exact printable PS1 after its
+// OSC readiness marker. Keeping the tool's reset prompt identical lets the
+// backend settle on prompt evidence instead of its multi-second silence tier.
+const SHELL_PROMPT = 'dsh> '
 const TIMEOUT_CODE = 'PERSISTENT_BASH_TIMEOUT'
 // One page is enough to find a just-emitted completion marker; the full
 // scrollback is assembled only when a command settles or needs partial output.

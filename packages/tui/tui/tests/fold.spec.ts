@@ -5,7 +5,7 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { anchorRetry, applyEvent, createScratch, foldFromLog, initialState } from '../src/fold'
 import type { FoldState } from '../src/types'
 import { parseMouseWheel, scrollOffsetForWheel, stripMouseReports } from '../src/mouse'
-import { fitStatsStrip, formatStats, markdownLines, renderNodePlain } from '../src/plain'
+import { fitStatsStrip, formatStats, localizeFoldStatus, markdownLines, renderNodePlain, welcomeText } from '../src/plain'
 
 /** Display width alias used by the table alignment assertions. */
 const stringWidthOf = stringWidth
@@ -395,6 +395,27 @@ describe('session fold', () => {
     expect(replayed.fold.nodes).toEqual(foldAll(events).nodes)
   })
 
+  it('replays a large history in one batch and restores immutable live publication afterward', () => {
+    const events = Array.from({ length: 10_000 }, (_, index) => event('user/message', {
+      id: `message-${index}`,
+      role: 'user',
+      content: [text(`history ${index}`)],
+      source: { kind: 'user' },
+    }, index))
+    const replayed = foldFromLog(events)
+    expect(replayed.fold.nodes).toHaveLength(events.length)
+    expect(replayed.fold.trace).toHaveLength(events.length)
+    expect(replayed.fold.nodes.at(-1)).toMatchObject({ kind: 'user', text: 'history 9999' })
+
+    const replayNodes = replayed.fold.nodes
+    const next = applyEvent(replayed.fold, event('command/done', {
+      name: 'help', kind: 'success', text: 'after resume',
+    }, events.length), replayed.scratch)
+    expect(next.nodes).not.toBe(replayNodes)
+    expect(replayNodes).toHaveLength(events.length)
+    expect(next.nodes).toHaveLength(events.length + 1)
+  })
+
   it('formats the stats strip per locale with the occupancy projection first', () => {
     const withWindow = [...canonicalSequence(), event('request/context', { provider: 'p', model: 'm', contextWindow: 128_000 }, 100)]
     const stats = foldAll(withWindow).stats
@@ -407,6 +428,32 @@ describe('session fold', () => {
     expect(formatStats(stats, 'en', occupancy)).toContain('occupied 50%/128k')
     // A zero projected value falls back to the billed-tokens group.
     expect(formatStats(stats, 'zh', { projectedTokens: 0, contextWindow: 128_000 })).toContain('%/128k')
+  })
+
+  it('localizes deterministic fold and linear-fallback chrome in English', () => {
+    const statuses = [
+      '└ turn 2 · LLM 10ms · 工具 20ms',
+      '◈ plan 模式开启',
+      '◈ plan 模式关闭',
+      '◆ goal 已清除',
+      '◆ goal update · 已阻塞 · waiting',
+    ].map(status => localizeFoldStatus(status, 'en'))
+    const linear = [
+      renderNodePlain({ kind: 'context', id: 1, producer: 'system', text: 'details' }, 'en'),
+      renderNodePlain({
+        kind: 'retry', id: 2, retryId: 'retry-1', turn: 1, step: 1, provider: 'p', policyKey: 'default', retry: 1,
+        maxRetries: 3, delayMs: 100, retryAt: 0, started: false, failure: { code: 'rate-limit' },
+      }, 'en'),
+      welcomeText('en'),
+    ]
+    expect(statuses).toEqual([
+      '└ turn 2 · LLM 10ms · tools 20ms',
+      '◈ plan mode on',
+      '◈ plan mode off',
+      '◆ goal cleared',
+      '◆ goal update · blocked · waiting',
+    ])
+    expect([...statuses, ...linear].join('\n')).not.toMatch(/\p{Script=Han}/u)
   })
 
   it('fits the stats strip by dropping whole groups, never ellipses', () => {

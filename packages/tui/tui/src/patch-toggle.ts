@@ -7,6 +7,80 @@
  * @module @deepseek-ai/dsh-tui/src/patch-toggle
  */
 
+interface LoaderEntryView {
+  id: string
+  disabled: boolean
+  options: { id: string; name: string; group?: boolean | null; disabled?: unknown }
+  fiber?: {
+    inject: Record<string, unknown>
+    store?: Record<string, unknown> | undefined
+  } | undefined
+  subgroup?: unknown
+  subtree?: unknown
+}
+
+const GENERATED_LOADER_ID = /^[0-9a-f]{8}$/
+
+/**
+ * Decide whether one Loader entry represents a leaf plugin suitable for the
+ * settings inventory. Include carriers, nested groups, and internal ids stay
+ * out of the switch list because disabling them cascades into unrelated rows.
+ * @param entry - Loader entry facts needed by the inventory.
+ * @returns whether the row is a leaf plugin switch.
+ */
+export function isPluginInventoryEntry(entry: LoaderEntryView): boolean {
+  return entry.options.group !== true
+    && entry.id !== entry.options.id
+    && entry.subgroup === undefined
+    && entry.subtree === undefined
+    && !entry.options.id.includes(':')
+    // EntryTree.ensureId() assigns this form to dynamically mounted rows that
+    // omitted an id. They have no stable patch target across launches.
+    && !GENERATED_LOADER_ID.test(entry.options.id)
+}
+
+/**
+ * List enabled Loader entries that require a service owned by `target`.
+ * Disabling such a provider would leave those rows pending and make the next
+ * strict application boot fail, so it stays outside the independent switch
+ * inventory and remains visible through the read-only Inventory page.
+ * @param entries - the settled Loader tree.
+ * @param target - the active provider considered for disabling.
+ * @returns unique dependent entry ids, alphabetically sorted.
+ */
+export function pluginDisableBlockers(entries: readonly LoaderEntryView[], target: LoaderEntryView): string[] {
+  const provided = new Set(Object.keys(target.fiber?.store ?? {}))
+  if (provided.size === 0) return []
+  return [...new Set(entries
+    // Include/group fibers inherit injections for their subtree. Generated-id
+    // leaf fibers are real dependents but are named by module because their id
+    // is intentionally unstable across launches.
+    .filter(entry => entry !== target
+      && entry.subgroup === undefined
+      && entry.subtree === undefined
+      && !entry.disabled
+      && entry.fiber !== undefined)
+    .filter(entry => Object.keys(entry.fiber?.inject ?? {}).some(service => provided.has(service)))
+    .map((entry) => {
+      if (!GENERATED_LOADER_ID.test(entry.options.id)) return entry.options.id
+      return GENERATED_LOADER_ID.test(entry.options.name) ? 'dynamic-plugin' : entry.options.name
+    }))]
+    .sort((left, right) => left.localeCompare(right))
+}
+
+/**
+ * Detect a Loader entry whose enabled state is an evaluated expression rather
+ * than a literal switch. Environment/platform-owned rows stay read-only in the
+ * TUI so a user patch does not override their deployment condition.
+ * @param entry - Loader entry to inspect.
+ * @returns whether its disabled state is expression-owned.
+ */
+export function hasConditionalDisabledState(entry: LoaderEntryView): boolean {
+  return entry.options.disabled !== undefined
+    && entry.options.disabled !== null
+    && typeof entry.options.disabled !== 'boolean'
+}
+
 /**
  * Return the file content with `- id: <id>` carrying `disabled: true`.
  * An existing entry flips or gains its disable line; a missing entry is
@@ -16,6 +90,24 @@
  * @returns the edited text.
  */
 export function disableEntryText(content: string, id: string): string {
+  return setEntryDisabledText(content, id, true)
+}
+
+/**
+ * Return the file content with `- id: <id>` carrying `disabled: false`.
+ * The explicit override is required for entries disabled by an earlier bundle
+ * layer; removing a user-layer `disabled: true` row would merely reveal that
+ * earlier disabled state and make the switch appear to succeed without
+ * activating the plugin.
+ * @param content - the current patch file text.
+ * @param id - the loader entry id to enable.
+ * @returns the edited text.
+ */
+export function enableEntryText(content: string, id: string): string {
+  return setEntryDisabledText(content, id, false)
+}
+
+function setEntryDisabledText(content: string, id: string, disabled: boolean): string {
   const lines = content.split('\n')
   const out: string[] = []
   let found = false
@@ -26,10 +118,10 @@ export function disableEntryText(content: string, id: string): string {
       out.push(line)
       const next = lines[index + 1] ?? ''
       if (/^[ \t]*disabled:/.test(next)) {
-        out.push('  disabled: true')
+        out.push(`  disabled: ${disabled}`)
         index += 1
       } else {
-        out.push('  disabled: true')
+        out.push(`  disabled: ${disabled}`)
       }
       continue
     }
@@ -37,7 +129,7 @@ export function disableEntryText(content: string, id: string): string {
   }
   if (found) return out.join('\n')
   const bracket = out.findIndex(line => line.trim() === '[]')
-  const entry = [`- id: ${id}`, '  disabled: true']
+  const entry = [`- id: ${id}`, `  disabled: ${disabled}`]
   if (bracket !== -1) out.splice(bracket, 1, ...entry)
   else {
     // Insert before the trailing newline marker so the file keeps it.
@@ -46,38 +138,4 @@ export function disableEntryText(content: string, id: string): string {
     out.splice(insertAt, 0, ...entry)
   }
   return out.join('\n')
-}
-
-/**
- * Return the file content with the `- id: <id>` entry's `disabled: true`
- * line dropped; an entry left with only its id line is removed whole (a bare
- * `- id:` line would be a valid but noisy no-op patch).
- * @param content - the current patch file text.
- * @param id - the loader entry id to enable.
- * @returns the edited text.
- */
-export function enableEntryText(content: string, id: string): string {
-  const lines = content.split('\n')
-  const out: string[] = []
-  let inTarget = false
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? ''
-    if (/^[ \t]*- /.test(line)) inTarget = line.trim() === `- id: ${id}`
-    if (inTarget && /^[ \t]*disabled: true[ \t]*$/.test(line)) continue
-    out.push(line)
-  }
-  const result = out
-    .filter((line, index) => {
-      if (line.trim() !== `- id: ${id}`) return true
-      const next = out[index + 1] ?? ''
-      return /^[ \t]+/.test(next) && !/^[ \t]*- /.test(next)
-    })
-    .join('\n')
-  // A patch list must stay a YAML ARRAY: comments alone parse to null and
-  // the launcher's reload rejects the file. Restore the flow-style empty
-  // array when no entry remains.
-  if (!/^[ \t]*\[/m.test(result) && !/^[ \t]*- /m.test(result)) {
-    return `${result}${result.endsWith('\n') ? '' : '\n'}[]\n`
-  }
-  return result
 }

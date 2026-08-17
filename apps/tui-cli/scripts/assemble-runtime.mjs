@@ -1,17 +1,19 @@
 // Assemble the self-contained dsh-tui runtime: the launcher (apps/cli built
 // lib + config) plus every @deepseek-ai workspace package it resolves at
 // runtime, copied by each package's own published-files payload into
-// apps/tui-cli/runtime/. External registry dependencies are NOT copied —
-// they are declared as the wrapper's npm dependencies (resolved from the
-// registry at install time, reachable through Node's upward node_modules
-// walk from inside runtime/).
+// apps/tui-cli/runtime/. External registry dependencies are declared as the
+// wrapper's npm dependencies (resolved from the registry at install time,
+// reachable through Node's upward node_modules walk from inside runtime/).
+// Ink is also copied into runtime/node_modules so the workspace's pinned
+// cursor-coordinate patch survives npm installation; the registry dependency
+// remains declared so npm installs Ink's dependency graph.
 //
 // Mirrors the launcher's own resolution: healProfilesModuleFallback BFSes
 // dependencies + peerDependencies of the install anchor, so the bundled
 // closure must contain the same graph.
 //
 // Usage: node apps/tui-cli/scripts/assemble-runtime.mjs
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -22,6 +24,7 @@ const root = join(scriptDir, '..', '..', '..')
 const runtimeDir = join(pkgDir, 'runtime')
 // js-yaml lives in apps/cli's own dependency tree (pnpm isolated layout).
 const require = createRequire(join(root, 'apps/cli/package.json'))
+const wrapperRequire = createRequire(join(pkgDir, 'package.json'))
 
 /** Compare two semver-ish versions numerically (prerelease segments ignored). */
 export function semverMax(left, right) {
@@ -99,8 +102,15 @@ export function bundleRowPackages(rootDir) {
   return names
 }
 
-/** The external registry dependencies of the closure, pinned to the lockfile's resolved versions. */
-export function externalDependencies(rootDir, workspace) {
+/**
+ * The external registry dependencies of the closure, pinned to the lockfile's
+ * resolved versions. Dependencies of runtime-local external payloads are
+ * promoted to the wrapper manifest because pnpm's isolated links are not
+ * reachable after those payloads are copied out of the virtual store. Their
+ * versions come from that package's installed dependency graph rather than
+ * the highest same-named version elsewhere in the workspace lockfile.
+ */
+export function externalDependencies(rootDir, workspace, localExternalRoots = []) {
   const lock = readLock(rootDir)
   const resolved = new Map()
   for (const key of Object.keys(lock.packages ?? {})) {
@@ -132,7 +142,34 @@ export function externalDependencies(rootDir, workspace) {
       void range
     }
   }
+  for (const packageRoot of localExternalRoots) {
+    const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'))
+    for (const [name, range] of Object.entries({ ...(manifest.dependencies ?? {}), ...(manifest.optionalDependencies ?? {}) })) {
+      const dependencyManifest = installedDependencyManifest(packageRoot, name)
+      const version = dependencyManifest.version
+      if (typeof version !== 'string') throw new Error(`assemble-runtime: external dependency ${name} (via runtime-local ${manifest.name ?? 'package'}) has no installed version`)
+      const existing = externals.get(name)
+      if (existing === undefined) externals.set(name, version)
+      else if (existing !== version) throw new Error(`assemble-runtime: runtime-local ${manifest.name ?? 'package'} requires ${name}@${version}, but the wrapper closure requires ${existing}`)
+      void range
+    }
+  }
   return externals
+}
+
+function installedDependencyManifest(packageRoot, name) {
+  let current = realpathSync(packageRoot)
+  while (true) {
+    const candidate = join(current, 'node_modules', ...name.split('/'), 'package.json')
+    if (existsSync(candidate)) {
+      const manifest = JSON.parse(readFileSync(candidate, 'utf8'))
+      if (manifest.name === name) return manifest
+    }
+    const parent = dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+  throw new Error(`assemble-runtime: cannot resolve installed dependency ${name} from ${packageRoot}`)
 }
 
 function readLock(rootDir) {
@@ -140,7 +177,7 @@ function readLock(rootDir) {
   return yaml.load(readFileSync(join(rootDir, 'pnpm-lock.yaml'), 'utf8'))
 }
 
-/** Recursively list files under one directory, skipping sourcemaps, source/test trees, and browser-client trees. */
+/** Recursively list files under one directory, skipping build caches, sourcemaps, source/test trees, and browser-client trees. */
 function walkFiles(dir) {
   const out = []
   const visit = (current, rel) => {
@@ -153,7 +190,7 @@ function walkFiles(dir) {
         // imported by the Node runtime (rel is relative to the walked lib/).
         if (entry.name === 'client' && (rel === 'types' || rel.endsWith('/types'))) continue
         visit(full, rel === '' ? entry.name : `${rel}/${entry.name}`)
-      } else if (!entry.name.endsWith('.map')) {
+      } else if (!entry.name.endsWith('.map') && !entry.name.endsWith('.tsbuildinfo')) {
         out.push(full)
       }
     }
@@ -222,7 +259,9 @@ function copyPayload(rootDir, relDir, destination, files) {
 function main() {
   const rowPackages = bundleRowPackages(root)
   const workspace = runtimeClosure(root, [...rowPackages])
-  const externals = externalDependencies(root, workspace)
+  const inkRoot = dirname(dirname(wrapperRequire.resolve('ink')))
+  const inkManifest = JSON.parse(readFileSync(join(inkRoot, 'package.json'), 'utf8'))
+  const externals = externalDependencies(root, workspace, [inkRoot])
   rmSync(runtimeDir, { recursive: true, force: true })
   mkdirSync(join(runtimeDir, 'node_modules'), { recursive: true })
   let totalBytes = 0
@@ -265,12 +304,37 @@ function main() {
     totalBytes += bytes
     notices.push(`${name} ${manifest.version ?? '?'} — ${manifest.license ?? 'MIT'}`)
   }
-  // 3. The wrapper's npm dependencies: the external registry packages.
+  // 3. The patched Ink payload. A published package does not inherit the
+  // workspace root's pnpm.patchedDependencies configuration, so relying only
+  // on the wrapper dependency would install stock Ink for npm consumers.
+  const resolvedInkVersion = externals.get('ink')
+  if (inkManifest.version !== resolvedInkVersion) {
+    throw new Error(`assemble-runtime: resolved Ink ${inkManifest.version} does not match wrapper dependency ${resolvedInkVersion ?? '(missing)'}`)
+  }
+  const cursorHelpers = readFileSync(join(inkRoot, 'build/cursor-helpers.js'), 'utf8')
+  const logUpdate = readFileSync(join(inkRoot, 'build/log-update.js'), 'utf8')
+  const outputRenderer = readFileSync(join(inkRoot, 'build/output.js'), 'utf8')
+  if (!cursorHelpers.includes('outputCursorRow - cursorPosition.y')
+    || !cursorHelpers.includes('input.outputCursorRow')
+    || !logUpdate.includes('outputCursorRow: lines.length - 1')
+    || !logUpdate.includes('outputCursorRow: nextLines.length - 1')
+    || !outputRenderer.includes("findLastIndex(cell => cell.value === '\\uE000')")
+    || !outputRenderer.includes("value: '█'")
+    || !outputRenderer.includes('positionedRightEdge')) {
+    throw new Error('assemble-runtime: resolved Ink is missing the fullscreen terminal-coordinate patch')
+  }
+  const inkFiles = payloadFiles(inkRoot, '.', inkManifest)
+  const inkDestination = join(runtimeDir, 'node_modules', 'ink')
+  const inkBytes = copyPayload(inkRoot, '.', inkDestination, inkFiles)
+  if (inkBytes === 0) throw new Error('assemble-runtime: patched Ink copied nothing')
+  totalBytes += inkBytes
+  notices.push(`ink ${inkManifest.version} (runtime-local patched payload) — ${inkManifest.license ?? 'MIT'}`)
+  // 4. The wrapper's npm dependencies: the external registry packages.
   const wrapperManifestPath = join(pkgDir, 'package.json')
   const wrapperManifest = JSON.parse(readFileSync(wrapperManifestPath, 'utf8'))
   wrapperManifest.dependencies = Object.fromEntries([...externals].sort())
   writeFileSync(wrapperManifestPath, `${JSON.stringify(wrapperManifest, undefined, 2)}\n`)
-  // 4. The bundled-content notice.
+  // 5. The bundled-content notice.
   const notice = [
     '# Bundled runtime notice',
     '',

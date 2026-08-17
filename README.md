@@ -1,5 +1,7 @@
 # DeepSeek Harness TUI (`dsh-tui`)
 
+English | [中文](README.zh.md)
+
 <p align="center">
   <a href="#quick-start"><img alt="Node 22" src="https://img.shields.io/badge/NODE-22+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white"></a>
   <a href="#architecture"><img alt="React 19" src="https://img.shields.io/badge/REACT-19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB"></a>
@@ -10,12 +12,12 @@
 
 <p align="center"><strong>English</strong> · <a href="#简体中文">简体中文</a> · Local-first · Session persistence · Tool runtime</p>
 
-> 🚀 **Release Candidate `0.1.0-rc.7`** — clean-room installation verified on
+> 🚀 **Release Candidate `0.1.0-rc.10`** — clean-room installation verified on
 > Windows, macOS, and Linux. Not stable yet. See [Quick Start](#quick-start).
 
 <p align="center">
   <img src="assets/tui-session-chat.png" alt="dsh-tui session screenshot" width="46%">
-  <img src="assets/tui-session-panel.png" alt="dsh-tui settings panel screenshot" width="46%">
+  <img src="assets/tui-session-panel.png" alt="dsh-tui full-screen transcript screenshot" width="46%">
 </p>
 
 `dsh-tui` is a **local terminal assistant** for the DeepSeek Harness agent
@@ -60,7 +62,7 @@ npm install -g @jame100101/dsh-tui@rc
 To pin this release candidate exactly:
 
 ```sh
-npm install -g @jame100101/dsh-tui@0.1.0-rc.7
+npm install -g @jame100101/dsh-tui@0.1.0-rc.10
 ```
 
 The package ships its runtime inside the tarball — nothing else to install.
@@ -69,7 +71,7 @@ The package ships its runtime inside the tarball — nothing else to install.
 
 ```sh
 dsh-tui --version
-# 0.1.0-rc.7
+# 0.1.0-rc.10
 ```
 
 ### 4. Start in your project
@@ -195,7 +197,7 @@ For a feature-by-feature comparison with the Web frontend, see
 
 ### 项目状态
 
-已作为 **Release Candidate** 发布：`@jame100101/dsh-tui@0.1.0-rc.7`
+已作为 **Release Candidate** 发布：`@jame100101/dsh-tui@0.1.0-rc.10`
 （dist-tag：`rc`）。Windows / macOS / Linux 干净环境安装已验证，尚未 stable。
 
 ### 快速开始
@@ -208,8 +210,8 @@ Ubuntu/Debian 用 NodeSource（系统 apt 的 nodejs 通常太旧），任意平
 nvm。
 
 ```sh
-npm install -g @jame100101/dsh-tui@rc      # 安装（固定版本：@0.1.0-rc.7）
-dsh-tui --version                          # 验证，输出 0.1.0-rc.7
+npm install -g @jame100101/dsh-tui@rc      # 安装（固定版本：@0.1.0-rc.10）
+dsh-tui --version                          # 验证，输出 0.1.0-rc.10
 cd 你的项目
 dsh-tui                                    # 启动；当前目录即默认 workspace
 ```

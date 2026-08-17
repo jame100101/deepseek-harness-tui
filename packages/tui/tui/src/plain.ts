@@ -339,16 +339,43 @@ export function markdownLines(source: string, maxWidth: number = Number.POSITIVE
 }
 
 /**
+ * Translate renderer-owned labels embedded in deterministic fold status rows.
+ * User, model, tool, and command payload text is returned untouched.
+ * @param text - one settled status row from the fold.
+ * @param locale - UI chrome language.
+ * @returns localized status text.
+ */
+export function localizeFoldStatus(text: string, locale: 'zh' | 'en'): string {
+  if (locale === 'zh') return text
+  if (text === '◈ plan 模式开启') return '◈ plan mode on'
+  if (text === '◈ plan 模式关闭') return '◈ plan mode off'
+  if (text === '◆ goal 已清除') return '◆ goal cleared'
+  const goal = /^◆ goal ([^·]+) · (进行中|已暂停|已阻塞|已完成) · ([\s\S]*)$/.exec(text)
+  if (goal !== null) {
+    const phase = goal[2] === '进行中'
+      ? 'active'
+      : goal[2] === '已暂停'
+        ? 'paused'
+        : goal[2] === '已阻塞'
+          ? 'blocked'
+          : 'complete'
+    return `◆ goal ${goal[1]?.trim() ?? ''} · ${phase} · ${goal[3] ?? ''}`
+  }
+  return text.startsWith('└ turn ') ? text.replace(' · 工具 ', ' · tools ') : text
+}
+
+/**
  * Render one row as terminal text (glyph prefix plus body).
  * @param node - the settled row.
+ * @param locale - UI chrome language.
  * @returns the plain line(s).
  */
-export function renderNodePlain(node: TuiNode): string {
+export function renderNodePlain(node: TuiNode, locale: 'zh' | 'en' = 'zh'): string {
   switch (node.kind) {
     case 'user':
       return `▸ ${node.text}`
     case 'context':
-      return `◆ 上下文注入 · ${node.producer}\n${node.text}`
+      return `${locale === 'en' ? '◆ context injected' : '◆ 上下文注入'} · ${node.producer}\n${node.text}`
     case 'assistant':
       return node.text === '' ? '' : `● ${node.text}`
     case 'think':
@@ -360,10 +387,13 @@ export function renderNodePlain(node: TuiNode): string {
     }
     case 'retry': {
       const max = node.maxRetries === null ? '∞' : String(node.maxRetries)
-      return `⟳ retry ${node.retry}/${max} · ${node.started ? '已触发' : '等待重试'}`
+      const state = locale === 'en'
+        ? (node.started ? 'fired' : 'waiting')
+        : (node.started ? '已触发' : '等待重试')
+      return `⟳ retry ${node.retry}/${max} · ${state}`
     }
     case 'status':
-      return `${node.error ? '×' : '◆'} ${node.text}`
+      return `${node.error ? '×' : '◆'} ${localizeFoldStatus(node.text, locale)}`
   }
 }
 
@@ -384,8 +414,15 @@ export function renderAssistantResultPlain(nodes: readonly TuiNode[]): string {
     .trimEnd()
 }
 
-/** The v0.0.13 welcome line shown before the first user message. */
-export const WELCOME = 'dsh-tui v0.0.13 — 输入任务开始工作；/ 查看命令，/help 帮助，/quit 退出。'
+/** The v0.0.13 linear-mode welcome line for one UI locale. */
+export function welcomeText(locale: 'zh' | 'en' = 'zh'): string {
+  return locale === 'en'
+    ? 'dsh-tui v0.0.13 — type a task to begin; / lists commands, /help shows help, /quit exits.'
+    : 'dsh-tui v0.0.13 — 输入任务开始工作；/ 查看命令，/help 帮助，/quit 退出。'
+}
+
+/** The zh welcome text retained for the default linear fallback. */
+export const WELCOME = welcomeText('zh')
 
 /** One `┃ text ┃` row padded to the panel's inner width. */
 function panelLine(text: string, innerWidth: number): string {
@@ -555,8 +592,8 @@ export function helpText(locale: 'zh' | 'en' = 'zh'): string {
       '/effort      set the reasoning effort: off | high | max',
       '/goal        current goal details · /quit /exit save and exit',
       'Enter send · Ctrl+Enter steer · Shift+Enter newline · Esc cancel the running turn',
-      'Shift+Tab cycle the file permission · PgUp/PgDn history · ↑↓+Enter expand/collapse',
-      '↑/↓ input history · Tab selects a message (↑↓ move · Space expand · g/b rate)',
+      'Shift+Tab cycle the file permission · PgUp/PgDn scroll history · ↑/↓ input history',
+      'Click disclosure arrows to expand/collapse; any Thinking arrow toggles all Thinking rows',
       'Click the ▼ button to jump back to the newest lines · Ctrl+L clear · Ctrl+D exit when idle',
     ].join('\n')
     : [
@@ -573,8 +610,8 @@ export function helpText(locale: 'zh' | 'en' = 'zh'): string {
       '/effort      设置推理力度：off | high | max',
       '/goal        当前 goal 详情 · /quit /exit 保存并退出',
       'Enter 发送 · Ctrl+Enter 转向(steer) · Shift+Enter 换行 · Esc 取消当前轮',
-      'Shift+Tab 切换文件权限 · PgUp/PgDn 历史 · ↑↓+Enter 展开/折叠',
-      '↑/↓ 历史输入 · Tab 选择消息（↑↓ 移动 · Space 展开 · g/b 评分）',
+      'Shift+Tab 切换文件权限 · PgUp/PgDn 滚动历史 · ↑/↓ 历史输入',
+      '点击展开箭头展开/折叠；任一 Thinking 箭头统一切换全部 Thinking',
       '点击 ▼ 按钮回到最新消息 · Ctrl+L 清屏 · Ctrl+D 空闲退出',
     ].join('\n')
 }

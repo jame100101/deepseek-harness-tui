@@ -36,7 +36,7 @@
     "ink": "7.1.1",
     "marked": "^16.1.1",
     "react": "19.2.8",
-    "string-width": "^7.2.0"
+    "string-width": "8.2.2"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
@@ -91,6 +91,8 @@
     "@deepseek-ai/dsh-user-approval": "workspace:^",
     "@deepseek-ai/dsh-user-questions": "workspace:^",
     "@deepseek-ai/dsh-workflow": "workspace:^",
-    "@types/react": "^19.2.18"
+    "@types/react": "^19.2.18",
+    "@xterm/headless": "6.0.0",
+    "node-pty": "1.1.0"
   }
 }

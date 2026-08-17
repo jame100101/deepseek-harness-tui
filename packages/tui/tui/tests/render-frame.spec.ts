@@ -7,12 +7,16 @@
  * screen stays duplicate-free under streaming plus rapid wheel scrolling.
  */
 
+import process from 'node:process'
 import { Writable, PassThrough } from 'node:stream'
 import { createElement } from 'react'
-import { describe, expect, it, afterEach } from 'vitest'
+import { describe, expect, it, afterEach, vi } from 'vitest'
 import { render } from 'ink'
 import stringWidth from 'string-width'
+import { marked } from 'marked'
+import xtermHeadless from '@xterm/headless'
 import { App, brandGlyph, permissionColor, permissionLabel, thinkingShimmerHex, thinkingShimmerLevel, traceLineColor } from '../src/render'
+import { selectComposerLayout, selectTerminalFrameWidth } from '../src/viewport'
 import type { TuiHost } from '../src/render'
 import { createTuiStore } from '../src/store'
 import type { TuiStore } from '../src/store'
@@ -26,10 +30,25 @@ class Capture extends Writable {
   output = ''
   columns = COLUMNS
   rows = ROWS
+  readonly terminal: InstanceType<typeof xtermHeadless.Terminal>
+
+  constructor() {
+    super()
+    this.terminal = new xtermHeadless.Terminal({ cols: this.columns, rows: this.rows, allowProposedApi: true, convertEol: true })
+    this.on('resize', () => { this.terminal.resize(this.columns, this.rows) })
+  }
+
   isTTY = true
   override _write(chunk: Buffer, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
     this.output += String(chunk)
-    callback()
+    this.terminal.write(String(chunk), callback)
+  }
+
+  /** Rows in the active terminal buffer after applying every emitted byte. */
+  screenLines(): string[] {
+    const buffer = this.terminal.buffer.active
+    return Array.from({ length: this.rows }, (_, index) =>
+      buffer.getLine(buffer.viewportY + index)?.translateToString(true) ?? '')
   }
 }
 
@@ -66,6 +85,30 @@ function lastCursorSuffix(output: string): { moveUp: number; column: number } {
   const last = matches[matches.length - 1]
   if (last === undefined) throw new Error('no cursor suffix emitted')
   return { moveUp: Number(last[1]), column: Number(last[2]) }
+}
+
+/** Assert the scrollbar occupies one stable cell beside a blank autowrap column. */
+function expectScrollbarColumn(capture: Capture): void {
+  const buffer = capture.terminal.buffer.active
+  const scrollbarColumn = selectTerminalFrameWidth(capture.columns) - 1
+  const safetyColumn = capture.columns - 1
+  let scrollbarRows = 0
+  for (let row = 0; row < capture.rows; row += 1) {
+    const line = buffer.getLine(buffer.viewportY + row)
+    if (line?.getCell(scrollbarColumn)?.getChars() === '█') scrollbarRows += 1
+    expect((line?.getCell(safetyColumn)?.getChars() ?? '').trim()).toBe('')
+  }
+  expect(scrollbarRows).toBeGreaterThan(3)
+}
+
+/** Build an SGR left-click report for one rendered trailing disclosure arrow. */
+function disclosureClick(lines: readonly string[], needle: string): string {
+  const row = lines.findIndex(line => line.includes(needle))
+  const rendered = lines[row]?.trimEnd()
+  if (row < 0 || rendered === undefined || (!rendered.endsWith('▶') && !rendered.endsWith('▼'))) {
+    throw new Error(`disclosure row not found for ${needle}`)
+  }
+  return `\x1b[<0;${stringWidth(rendered)};${row + 1}M`
 }
 
 /**
@@ -249,7 +292,6 @@ async function mount(nodes: readonly TuiNode[] = [], hostOverrides: Partial<TuiH
     selectModel: () => {},
     setEffort: () => {},
     cycleSandbox: () => 'read-only',
-    togglePlugin: () => Promise.resolve({ enabled: true }),
     approve: () => {},
     answerQuestion: () => {},
     updateSetting: () => Promise.resolve(),
@@ -271,7 +313,7 @@ async function mount(nodes: readonly TuiNode[] = [], hostOverrides: Partial<TuiH
   const stdin = fakeStdin()
   const instance = render(
     createElement(App, { store, host }),
-    { exitOnCtrlC: false, patchConsole: false, alternateScreen: false, stdout: capture as never, stdin: stdin as never },
+    { exitOnCtrlC: false, patchConsole: false, alternateScreen: true, interactive: true, stdout: capture as never, stdin: stdin as never },
   )
   // Ink 7 probes the kitty keyboard protocol for the first ~200ms after
   // mount (a 'data' listener swallows input during that window); settle past
@@ -291,11 +333,12 @@ describe('Ink 7 full-screen render', () => {
       expect(lines.some(line => line.includes('░▒▓▓████'))).toBe(true) // whale art (single-cell blocks only)
       expect(lines.some(line => line.includes('███'))).toBe(true) // 3D block title
       expect(lines.some(line => line.includes('session session-abc12345'))).toBe(true) // full session id in the header
-      // A fullscreen frame writes NO trailing newline, so after the write the
-      // terminal cursor rests ON the last row; Ink's suffix counts from one
-      // line below it (`moveUp = visibleLineCount - y`). The renderer's +1
-      // compensation must land the caret exactly on the composer input row:
-      // starting row frameRows - 1, minus the suffix's cursorUp count.
+      // Full blocks in ordinary chrome remain ordinary text. Only the private
+      // scrollbar marker may ask patched Ink to emit right-edge CHA.
+      expect(capture.output).not.toContain('\x1b[99G')
+      // A fullscreen frame writes no trailing newline, so its cursor suffix
+      // starts from the actual last output row and targets the zero-based
+      // measureElement row directly.
       const suffix = lastCursorSuffix(capture.output)
       const inputRow = composerInputRow(lines)
       expect(frameRows(lines) - 1 - suffix.moveUp).toBe(inputRow - 1)
@@ -306,10 +349,59 @@ describe('Ink 7 full-screen render', () => {
       await type('ab')
       const typed = lastCursorSuffix(capture.output)
       expect(typed.column).toBe(6)
+      expect(capture.terminal.buffer.active.cursorY).toBe(composerInputRow(capture.screenLines()) - 1)
     } finally {
       unmount()
     }
   })
+
+  it('keeps the terminal cursor on the composer row through repeated edits and resize', async () => {
+    const mounted = await mount()
+    const assertCaretRow = (caretLine = 0): void => {
+      const screenLines = mounted.capture.screenLines()
+      expect(mounted.capture.terminal.buffer.active.type).toBe('alternate')
+      expect(mounted.capture.terminal.buffer.active.cursorY).toBe(composerInputRow(screenLines) - 1 + caretLine)
+    }
+    try {
+      assertCaretRow()
+      for (const input of [
+        ...Array.from({ length: 20 }, () => ' '),
+        ...Array.from('ascii'),
+        ...Array.from(' mix ed '),
+        '\x7f',
+        '\x1b[D',
+        '\x1b[C',
+        '\x1b[H',
+        '\x1b[F',
+        '中',
+        '文',
+        '😀',
+        '⚙',
+      ]) {
+        await mounted.type(input)
+        assertCaretRow()
+      }
+
+      // One chunk exercises rapid input and forces a multi-row composer.
+      const draftBeforeRapid = `${' '.repeat(20)}ascii mix ed中文😀⚙`
+      const rapid = 'rapid '.repeat(30)
+      const rapidDraft = `${draftBeforeRapid}${rapid}`
+      mounted.stdin.write(rapid)
+      await new Promise<void>(resolve => setTimeout(resolve, 320))
+      assertCaretRow(selectComposerLayout(rapidDraft, rapidDraft.length, selectTerminalFrameWidth(COLUMNS) - 4, 5).caretLine)
+
+      mounted.capture.columns = 80
+      mounted.capture.rows = 24
+      mounted.capture.emit('resize')
+      await new Promise<void>(resolve => setTimeout(resolve, 320))
+      assertCaretRow(selectComposerLayout(rapidDraft, rapidDraft.length, selectTerminalFrameWidth(80) - 4, 5).caretLine)
+      await mounted.type(' after resize')
+      const resizedDraft = `${rapidDraft} after resize`
+      assertCaretRow(selectComposerLayout(resizedDraft, resizedDraft.length, selectTerminalFrameWidth(80) - 4, 5).caretLine)
+    } finally {
+      mounted.unmount()
+    }
+  }, 60_000)
 
   it('shows the slash picker and dismisses it with Escape', async () => {
     const { capture, unmount, type } = await mount()
@@ -322,6 +414,27 @@ describe('Ink 7 full-screen render', () => {
       expect(lines.some(line => line.includes('命令（↑↓ 选择'))).toBe(false)
     } finally {
       unmount()
+    }
+  })
+
+  it('opens and filters the slash picker without re-lexing settled history', async () => {
+    const lexer = vi.spyOn(marked, 'lexer')
+    const nodes: TuiNode[] = Array.from({ length: 120 }, (_, index) => ({
+      kind: 'assistant', id: index, messageId: `message-${index}`, text: `**history ${index}** with 中文 😀 ⚙`,
+    }))
+    const mounted = await mount(nodes)
+    try {
+      const afterMount = lexer.mock.calls.length
+      expect(afterMount).toBe(nodes.length)
+      await mounted.type('/')
+      expect(lexer.mock.calls.length).toBe(afterMount)
+      // `/h` reduces the palette from its capped height to one match. The
+      // transcript viewport changes height, but settled Markdown stays cached.
+      await mounted.type('h')
+      expect(lexer.mock.calls.length).toBe(afterMount)
+    } finally {
+      mounted.unmount()
+      lexer.mockRestore()
     }
   })
 
@@ -411,8 +524,10 @@ describe('Ink 7 full-screen render', () => {
       // Scroll up once: the rail and the thumb appear on the right edge.
       await type('\x1b[5~')
       let lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.endsWith('│'))).toBe(true)
       expect(lines.some(line => line.endsWith('█'))).toBe(true)
+      const transcriptRows = capture.screenLines().slice(4).filter(line => line.trimEnd().endsWith('█'))
+      expect(transcriptRows.length).toBeGreaterThan(3)
+      expectScrollbarColumn(capture)
       // The gutter accepts the rail column AND the adjacent margin cell
       // (2-cell click target): a press there on the TOP row jumps to the
       // OLDEST lines.
@@ -446,7 +561,7 @@ describe('Ink 7 full-screen render', () => {
       // computed the rail position from v7 widths, so every row containing
       // such a glyph rendered its rail off-column. The gutter is now its own
       // Box, so no width arithmetic can shift it.
-      kind: 'user', id: index, text: `第${index}行 ⚙`,
+      kind: 'user', id: index, text: `第${index}行 😀 ⚙`,
     }))
     const { store, capture, unmount } = await mount(nodes)
     try {
@@ -469,8 +584,19 @@ describe('Ink 7 full-screen render', () => {
       // Every transcript row still ends in exactly one gutter cell (rail or
       // thumb) — never wrapped text pushed into or out of the column.
       const transcriptRows = lines.slice(4, 24)
-      expect(transcriptRows.every(line => line.endsWith('│') || line.endsWith('█'))).toBe(true)
+      expect(transcriptRows.every(line => line.endsWith('█'))).toBe(true)
       expect(transcriptRows.some(line => line.includes('…'))).toBe(true)
+      expectScrollbarColumn(capture)
+
+      // xterm's default Unicode provider counts 😀 differently from
+      // string-width 8.2.2. The right-edge CHA emitted by patched Ink must
+      // still place every rail/thumb cell in column 39 after a narrow resize.
+      capture.columns = 40
+      capture.rows = 18
+      capture.emit('resize')
+      await new Promise<void>(resolve => setTimeout(resolve, 320))
+      expect(capture.output).toContain('\x1b[39G')
+      expectScrollbarColumn(capture)
     } finally {
       unmount()
     }
@@ -616,7 +742,7 @@ describe('Ink 7 full-screen render', () => {
     }
   })
 
-  it('walks selection onto assistant messages and rates them with g/b', async () => {
+  it('leaves idle Tab inert and keeps arrows/Space/text owned by the composer', async () => {
     const rates: { messageId: string; rating: 'positive' | 'negative' }[] = []
     const nodes: TuiNode[] = [
       { kind: 'user', id: 1, text: '你好' },
@@ -629,30 +755,23 @@ describe('Ink 7 full-screen render', () => {
       },
     })
     try {
-      // Tab enters selection mode on the LAST node (the assistant row here);
-      // ↑/↓ then walk every visible row, not only collapsible ones.
+      // Tab no longer enters a transcript-selection mode.
       await type('\t')
       let lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('» ● 你好！'))).toBe(true)
-      expect(lines.some(line => line.includes('g 赞 · b 踩'))).toBe(true)
-      // ↑ walks up to the user row, ↓ back down to the assistant.
+      expect(lines.some(line => line.includes('» '))).toBe(false)
+      // With no submitted input, ↑/↓ remain history navigation and do
+      // not move a transcript cursor onto either message.
       await type('\x1b[A')
-      lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('» ▸ 你好'))).toBe(true)
       await type('\x1b[B')
       lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('» ● 你好！'))).toBe(true)
+      expect(lines.some(line => line.includes('» '))).toBe(false)
+      // Space and ordinary keys are inserted into the composer after Tab.
+      await type(' ')
       await type('g')
-      expect(rates).toEqual([{ messageId: 'a1', rating: 'positive' }])
       await type('b')
-      expect(rates).toEqual([
-        { messageId: 'a1', rating: 'positive' },
-        { messageId: 'a1', rating: 'negative' },
-      ])
+      expect(rates).toEqual([])
       lines = lastFrameLines(capture.output)
-      // Typing while the composer is empty never pollutes the draft.
-      expect(lines.some(line => line.trimStart().startsWith('› g'))).toBe(false)
-      expect(lines.some(line => line.trimStart().startsWith('› b'))).toBe(false)
+      expect(lines.some(line => line.includes('›  gb'))).toBe(true)
     } finally {
       unmount()
     }
@@ -947,6 +1066,30 @@ describe('Ink 7 full-screen render', () => {
     }
   })
 
+  it('opens /effort as a three-option Claude-style selector', async () => {
+    const efforts: (string | undefined)[] = []
+    const { capture, unmount, type } = await mount([], {
+      setEffort: (effort) => { efforts.push(effort) },
+    })
+    try {
+      await type('/effort')
+      let lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('推理力度（↑↓ 选择'))).toBe(true)
+      expect(lines.some(line => line.includes('▸ off') && line.includes('当前'))).toBe(true)
+      expect(lines.some(line => line.includes('high') && line.includes('高强度推理'))).toBe(true)
+      expect(lines.some(line => line.includes('max') && line.includes('最大强度推理'))).toBe(true)
+      expect(lines.some(line => line.includes('/attach'))).toBe(false)
+      await type('\x1b[B')
+      lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('▸ high'))).toBe(true)
+      await type('\r')
+      expect(efforts).toEqual(['high'])
+      expect(lastFrameLines(capture.output).some(line => line.includes('推理等级 → high'))).toBe(true)
+    } finally {
+      unmount()
+    }
+  })
+
   it('keeps the /sessions selection visible: the viewport follows the cursor', async () => {
     const rows = Array.from({ length: 40 }, (_, index) => ({
       id: `session-${String(index).padStart(4, '0')}`,
@@ -959,21 +1102,23 @@ describe('Ink 7 full-screen render', () => {
       await type('/sessions')
       await type('\r')
       await new Promise<void>(resolve => setTimeout(resolve, 320))
-      // Walk the selection 25 rows down: without scroll-follow the selected
+      // The panel opens on session-0000. Walk 25 actionable rows down:
+      // without scroll-follow the selected
       // row would sit far below the 20-row panel window and stay invisible.
       for (let press = 0; press < 25; press += 1) {
         await type('\x1b[B')
       }
       await new Promise<void>(resolve => setTimeout(resolve, 320))
       const lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('▸ ') && line.includes('session-0024'))).toBe(true)
-      // Walking back up brings the head into view again.
+      expect(lines.some(line => line.includes('▸ ') && line.includes('session-0025'))).toBe(true)
+      // Walking back up returns to the first actionable row, not the static
+      // header that cannot resume anything.
       for (let press = 0; press < 25; press += 1) {
         await type('\x1b[A')
       }
       await new Promise<void>(resolve => setTimeout(resolve, 320))
       const back = lastFrameLines(capture.output)
-      expect(back.some(line => line.includes('▸ ') && line.includes('活动会话 / 持久化会话'))).toBe(true)
+      expect(back.some(line => line.includes('▸ ') && line.includes('session-0000'))).toBe(true)
     } finally {
       unmount()
     }
@@ -1038,14 +1183,8 @@ describe('Ink 7 full-screen render', () => {
     }
   }, 30_000)
 
-  it('toggles a plugin switch on the plugins page through the host', async () => {
-    const toggles: string[] = []
-    const { store, capture, unmount, type } = await mount([{ kind: 'user', id: 1, text: 'hi' }], {
-      togglePlugin: async (id) => {
-        toggles.push(id)
-        return { enabled: false }
-      },
-    })
+  it('keeps the complete plugins page read-only and points to the profile patch', async () => {
+    const { store, capture, unmount, type } = await mount([{ kind: 'user', id: 1, text: 'hi' }])
     try {
       const snapshot = store.getSnapshot()
       store.set({
@@ -1063,23 +1202,59 @@ describe('Ink 7 full-screen render', () => {
       await type('\r')
       await new Promise<void>(resolve => setTimeout(resolve, 320))
       let lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('插件 Plugins') && line.includes('Enter 切换开关'))).toBe(true)
-      expect(lines.some(line => line.includes('● storage'))).toBe(true)
-      // ↓ onto the first plugin row, Enter toggles it through the host.
+      expect(lines.some(line => line.includes('插件 Plugins') && line.includes('完整只读状态清单'))).toBe(true)
+      expect(lines.some(line => line.includes('● storage · storage'))).toBe(true)
+      expect(lines.some(line => line.includes('○ off · off · 未加载 · 已禁用'))).toBe(true)
+      expect(lines.some(line => line.includes('让 Agent 为你修改该配置文件'))).toBe(true)
+      // Enter and c remain inert: the list never writes or opens an editor.
       await type('\x1b[B')
       await type('\r')
-      expect(toggles).toEqual(['storage'])
-      lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('storage → 已关闭'))).toBe(true)
-      // `c` opens the plugin's config editor; `q` returns to the plugins list.
       await type('c')
-      await new Promise<void>(resolve => setTimeout(resolve, 320))
-      lines = lastFrameLines(capture.output)
-      expect(lines.some(line => line.includes('插件配置 · Enter 切换/编辑'))).toBe(true)
-      await type('q')
-      await new Promise<void>(resolve => setTimeout(resolve, 320))
       lines = lastFrameLines(capture.output)
       expect(lines.some(line => line.includes('插件 Plugins'))).toBe(true)
+      expect(lines.some(line => line.includes('插件配置 · Enter 切换/编辑'))).toBe(false)
+      expect(lines.some(line => line.includes('storage →'))).toBe(false)
+    } finally {
+      unmount()
+    }
+  }, 30_000)
+
+  it('renders English chrome without Chinese fallbacks', async () => {
+    const { store, capture, unmount, type } = await mount([
+      { kind: 'status', id: 1, text: '└ turn 1 · LLM 10ms · 工具 20ms', error: false },
+      { kind: 'status', id: 2, text: '◈ plan 模式开启', error: false },
+      { kind: 'status', id: 3, text: '◆ goal update · 已完成 · shipped', error: false },
+    ])
+    try {
+      const snapshot = store.getSnapshot()
+      store.set({
+        ...snapshot,
+        version: snapshot.version + 1,
+        settings: snapshot.settings === null ? snapshot.settings : {
+          ...snapshot.settings,
+          general: { ...snapshot.settings.general, locale: 'en' },
+          plugins: [
+            { id: 'sessions', name: 'sessions', enabled: true, loaded: true },
+            { id: 'optional', name: 'optional', enabled: false, loaded: false },
+          ],
+        },
+      })
+      await type('/')
+      let screen = capture.screenLines().join('\n')
+      expect(screen).toContain('commands (↑↓ select')
+      expect(screen).toContain('tools 20ms')
+      expect(screen).toContain('plan mode on')
+      expect(screen).toContain('goal update · complete')
+      expect(screen).not.toMatch(/\p{Script=Han}/u)
+
+      await type('\x1b')
+      await type('\x7f')
+      await type('/settings plugins')
+      await type('\r')
+      screen = capture.screenLines().join('\n')
+      expect(screen).toContain('complete read-only status list')
+      expect(screen).toContain('ask the Agent to update that configuration file')
+      expect(screen).not.toMatch(/\p{Script=Han}/u)
     } finally {
       unmount()
     }
@@ -1094,6 +1269,73 @@ describe('Ink 7 full-screen render', () => {
       unmount()
     }
   })
+
+  it('uses any Thinking disclosure arrow as the global thinking on/off switch', async () => {
+    const updates: Array<'collapsed' | 'expanded'> = []
+    let liveStore: TuiStore | undefined
+    const { store, capture, unmount, type } = await mount([
+      { kind: 'think', id: 1, text: 'alpha reasoning', durationMs: 1_000 },
+      { kind: 'think', id: 2, text: 'beta reasoning', durationMs: 2_000 },
+    ], {
+      updateSetting: async (patch) => {
+        if (patch.thinking === undefined) return
+        updates.push(patch.thinking)
+        const snapshot = liveStore?.getSnapshot()
+        if (snapshot?.settings === null || snapshot?.settings === undefined) return
+        liveStore?.set({
+          ...snapshot,
+          version: snapshot.version + 1,
+          settings: {
+            ...snapshot.settings,
+            general: { ...snapshot.settings.general, thinking: patch.thinking },
+          },
+        })
+      },
+    })
+    try {
+      liveStore = store
+      let lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('thinking off'))).toBe(true)
+      expect(lines.filter(line => line.includes('✓ Thinking') && line.includes('▶'))).toHaveLength(2)
+
+      await type(disclosureClick(lines, '✓ Thinking 1.0s'))
+      lines = lastFrameLines(capture.output)
+      expect(updates).toEqual(['expanded'])
+      expect(lines.some(line => line.includes('thinking on'))).toBe(true)
+      expect(lines.filter(line => line.includes('✓ Thinking') && line.includes('▼'))).toHaveLength(2)
+      expect(lines.some(line => line.includes('│ alpha reasoning'))).toBe(true)
+      expect(lines.some(line => line.includes('│ beta reasoning'))).toBe(true)
+
+      // Clicking either expanded row closes every Thinking body and updates
+      // the same setting/header state.
+      await type(disclosureClick(lines, '✓ Thinking 2.0s'))
+      lines = lastFrameLines(capture.output)
+      expect(updates).toEqual(['expanded', 'collapsed'])
+      expect(lines.some(line => line.includes('thinking off'))).toBe(true)
+      expect(lines.filter(line => line.includes('✓ Thinking') && line.includes('▶'))).toHaveLength(2)
+      expect(lines.some(line => line.includes('alpha reasoning'))).toBe(false)
+      expect(lines.some(line => line.includes('beta reasoning'))).toBe(false)
+    } finally {
+      unmount()
+    }
+  }, 30_000)
+
+  it('keeps non-Thinking disclosure arrows as direct per-node controls', async () => {
+    const { capture, unmount, type } = await mount([{
+      kind: 'context', id: 1, producer: 'system', text: 'context detail',
+    }])
+    try {
+      let lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('context detail'))).toBe(false)
+      const contextHead = lines.find(line => line.includes('▶'))?.trim() ?? ''
+      await type(disclosureClick(lines, contextHead.slice(0, -1).trim()))
+      lines = lastFrameLines(capture.output)
+      expect(lines.some(line => line.includes('context detail'))).toBe(true)
+      expect(lines.some(line => line.includes('thinking off'))).toBe(true)
+    } finally {
+      unmount()
+    }
+  }, 30_000)
 
   it('wraps the expanded Thinking body at word boundaries, not mid-word', async () => {
     const { store, capture, unmount } = await mount([{

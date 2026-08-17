@@ -9,6 +9,18 @@
 
 import stringWidth from 'string-width'
 
+/**
+ * Select the width Ink may paint without touching the terminal's autowrap
+ * column. A terminal with at least two columns keeps its final physical cell
+ * blank, so repaint control sequences never inherit a pending right-margin
+ * wrap from a full-width frame.
+ * @param terminalColumns - physical terminal columns.
+ * @returns the frame width in terminal cells.
+ */
+export function selectTerminalFrameWidth(terminalColumns: number): number {
+  return Math.max(1, Math.floor(terminalColumns) - 1)
+}
+
 /** One styled transcript line entering the viewport. */
 export interface TranscriptLine {
   key: string
@@ -17,6 +29,10 @@ export interface TranscriptLine {
   bold?: boolean
   dim?: boolean
   runs?: { text: string; bold?: boolean; code?: boolean; underline?: boolean; dim?: boolean; color?: string }[]
+  /** Node whose disclosure arrow owns this header line. */
+  disclosureNodeId?: number
+  /** Thinking arrows toggle the global display; other arrows toggle one node. */
+  disclosureKind?: 'thinking' | 'node'
 }
 
 /** The visible slice plus its scroll bookkeeping. */
@@ -38,7 +54,7 @@ export interface TranscriptViewport {
  * @returns the visible slice and clamped offset facts.
  */
 export function selectTranscriptViewport(
-  lines: TranscriptLine[],
+  lines: readonly TranscriptLine[],
   height: number,
   requestedOffset: number,
   bottomReserved = 0,
@@ -58,6 +74,35 @@ export function selectTranscriptViewport(
     offset,
     maximumOffset,
   }
+}
+
+/**
+ * Resolve one zero-based terminal row inside the transcript to its rendered
+ * line. The transcript bottom-aligns short content and may reserve its last
+ * row for the back-to-bottom button, so raw viewport indices are insufficient
+ * for mouse hit testing.
+ * @param lines - all rendered transcript lines.
+ * @param height - complete transcript height.
+ * @param requestedOffset - hidden lines counted from the bottom.
+ * @param bottomReserved - rows pinned below the scrolling content.
+ * @param row - zero-based row inside the complete transcript box.
+ * @returns the line under that row, or `undefined` for padding/reserved rows.
+ */
+export function transcriptLineAtRow(
+  lines: readonly TranscriptLine[],
+  height: number,
+  requestedOffset: number,
+  bottomReserved: number,
+  row: number,
+): TranscriptLine | undefined {
+  const viewportHeight = Math.max(1, Math.floor(height))
+  const reserved = Math.max(0, Math.min(Math.floor(bottomReserved), viewportHeight - 1))
+  const contentHeight = viewportHeight - reserved
+  const position = Math.floor(row)
+  if (position < 0 || position >= contentHeight) return undefined
+  const viewport = selectTranscriptViewport(lines, viewportHeight, requestedOffset, reserved)
+  const padding = Math.max(0, contentHeight - viewport.lines.length)
+  return viewport.lines[position - padding]
 }
 
 /** The visible text plus the caret column inside one single-line input. */

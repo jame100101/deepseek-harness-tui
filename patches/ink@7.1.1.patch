@@ -1,0 +1,142 @@
+diff --git a/build/cursor-helpers.d.ts b/build/cursor-helpers.d.ts
+index 29681f0..f64043c 100644
+--- a/build/cursor-helpers.d.ts
++++ b/build/cursor-helpers.d.ts
+@@ -11,8 +11,8 @@ export declare const cursorPositionChanged: (a: CursorPosition | undefined, b: C
+ /**
+ Build escape sequence to move cursor from bottom of output to the target position and show it.
+-Assumes cursor is at (col 0, line visibleLineCount) — i.e. just after the last output line.
++`outputCursorRow` is the row occupied after writing the output, including its trailing-newline state.
+ */
+-export declare const buildCursorSuffix: (visibleLineCount: number, cursorPosition: CursorPosition | undefined) => string;
++export declare const buildCursorSuffix: (outputCursorRow: number, cursorPosition: CursorPosition | undefined) => string;
+ /**
+ Build escape sequence to move cursor from previousCursorPosition back to the bottom of output.
+ This must be done before eraseLines or any operation that assumes cursor is at the bottom.
+@@ -25,7 +25,7 @@ export type CursorOnlyInput = {
+     cursorWasShown: boolean;
+     previousLineCount: number;
+     previousCursorPosition: CursorPosition | undefined;
+-    visibleLineCount: number;
++    outputCursorRow: number;
+     cursorPosition: CursorPosition | undefined;
+ };
+ /**
+diff --git a/build/cursor-helpers.js b/build/cursor-helpers.js
+index d2056e8..a967ef2 100644
+--- a/build/cursor-helpers.js
++++ b/build/cursor-helpers.js
+@@ -8,13 +8,13 @@ export { showCursorEscape, hideCursorEscape };
+ export const cursorPositionChanged = (a, b) => a?.x !== b?.x || a?.y !== b?.y;
+ /**
+ Build escape sequence to move cursor from bottom of output to the target position and show it.
+-Assumes cursor is at (col 0, line visibleLineCount) — i.e. just after the last output line.
++`outputCursorRow` is the row occupied after writing the output, including its trailing-newline state.
+ */
+-export const buildCursorSuffix = (visibleLineCount, cursorPosition) => {
++export const buildCursorSuffix = (outputCursorRow, cursorPosition) => {
+     if (!cursorPosition) {
+         return '';
+     }
+-    const moveUp = visibleLineCount - cursorPosition.y;
++    const moveUp = outputCursorRow - cursorPosition.y;
+     return ((moveUp > 0 ? ansiEscapes.cursorUp(moveUp) : '') +
+         ansiEscapes.cursorTo(cursorPosition.x) +
+         showCursorEscape);
+@@ -38,7 +38,7 @@ Hides cursor if it was previously shown, returns to bottom, then repositions.
+ export const buildCursorOnlySequence = (input) => {
+     const hidePrefix = input.cursorWasShown ? hideCursorEscape : '';
+     const returnToBottom = buildReturnToBottom(input.previousLineCount, input.previousCursorPosition);
+-    const cursorSuffix = buildCursorSuffix(input.visibleLineCount, input.cursorPosition);
++    const cursorSuffix = buildCursorSuffix(input.outputCursorRow, input.cursorPosition);
+     return hidePrefix + returnToBottom + cursorSuffix;
+ };
+ /**
+diff --git a/build/log-update.js b/build/log-update.js
+index 261277c..4a7fc17 100644
+--- a/build/log-update.js
++++ b/build/log-update.js
+@@ -32,13 +32,12 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+         }
+         const lines = str.split('\n');
+-        const visibleCount = visibleLineCount(lines, str);
+-        const cursorSuffix = buildCursorSuffix(visibleCount, activeCursor);
++        const cursorSuffix = buildCursorSuffix(lines.length - 1, activeCursor);
+         if (str === previousOutput && cursorChanged) {
+             stream.write(buildCursorOnlySequence({
+                 cursorWasShown,
+                 previousLineCount,
+                 previousCursorPosition,
+-                visibleLineCount: visibleCount,
++                outputCursorRow: lines.length - 1,
+                 cursorPosition: activeCursor,
+             }));
+         }
+@@ -88,7 +88,7 @@ const createStandard = (stream, { showCursor = false } = {}) => {
+             stream.write(hideCursorEscape);
+         }
+         if (activeCursor) {
+-            stream.write(buildCursorSuffix(visibleLineCount(lines, str), activeCursor));
++            stream.write(buildCursorSuffix(lines.length - 1, activeCursor));
+         }
+         previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
+         cursorWasShown = activeCursor !== undefined;
+@@ -130,7 +130,7 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+                 cursorWasShown,
+                 previousLineCount: previousLines.length,
+                 previousCursorPosition,
+-                visibleLineCount: visibleCount,
++                outputCursorRow: nextLines.length - 1,
+                 cursorPosition: activeCursor,
+             }));
+             previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
+@@ -145,7 +145,7 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+         }
+         const returnPrefix = buildReturnToBottomPrefix(cursorWasShown, previousLines.length, previousCursorPosition);
+         if (str === '\n' || previousOutput.length === 0) {
+-            const cursorSuffix = buildCursorSuffix(visibleCount, activeCursor);
++            const cursorSuffix = buildCursorSuffix(nextLines.length - 1, activeCursor);
+             stream.write(returnPrefix +
+                 ansiEscapes.eraseLines(previousLines.length) +
+                 str +
+@@ -187,7 +187,7 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+                 // has no trailing newline (fullscreen mode).
+                 (isLastLine && !hasTrailingNewline ? '' : '\n'));
+         }
+-        const cursorSuffix = buildCursorSuffix(visibleCount, activeCursor);
++        const cursorSuffix = buildCursorSuffix(nextLines.length - 1, activeCursor);
+         buffer.push(cursorSuffix);
+         stream.write(buffer.join(''));
+         cursorWasShown = activeCursor !== undefined;
+@@ -230,7 +230,7 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+             stream.write(hideCursorEscape);
+         }
+         if (activeCursor) {
+-            stream.write(buildCursorSuffix(visibleLineCount(lines, str), activeCursor));
++            stream.write(buildCursorSuffix(lines.length - 1, activeCursor));
+         }
+         previousCursorPosition = activeCursor ? { ...activeCursor } : undefined;
+         cursorWasShown = activeCursor !== undefined;
+diff --git a/build/output.js b/build/output.js
+index 5eeabbc..29e98be 100644
+--- a/build/output.js
++++ b/build/output.js
+@@ -196,7 +196,18 @@ export default class Output {
+         const generatedOutput = output
+             .map(line => {
+             // See https://github.com/vadimdemedes/ink/pull/564#issuecomment-1637022742
+             const lineWithoutEmptyItems = line.filter(item => item !== undefined);
++            const anchoredColumn = lineWithoutEmptyItems.findLastIndex(cell => cell.value === '\uE000');
++            const anchoredCell = lineWithoutEmptyItems[anchoredColumn];
++            if (anchoredCell) {
++                // Re-anchor the app's private scrollbar marker with CHA. A terminal may
++                // measure an earlier Unicode glyph differently from string-width;
++                // absolute positioning keeps scrollbar cells in their Yoga column.
++                const beforeRightEdge = styledCharsToString(lineWithoutEmptyItems.slice(0, anchoredColumn)).trimEnd();
++                const anchoredGlyph = styledCharsToString([{ ...anchoredCell, value: '█' }]);
++                const positionedRightEdge = `\u001B[${anchoredColumn + 1}G${anchoredGlyph}`;
++                return beforeRightEdge + positionedRightEdge;
++            }
+             return styledCharsToString(lineWithoutEmptyItems).trimEnd();
+         })
+             .join('\n');

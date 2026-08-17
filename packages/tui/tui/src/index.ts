@@ -16,7 +16,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { basename, extname, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -59,14 +59,12 @@ import type {} from '@deepseek-ai/dsh-attachment'
 // `agent-preset/selected` session-event vocabulary the preset rows below read.
 import type {} from '@deepseek-ai/dsh-agent-presets'
 // Empty type imports carry the sandbox-policy Context merge, the
-// session-projection registry merge, the token-meter `contextPressure`
-// SessionProjectionMap key the publish path reads, and the app-boot
-// `profilePatchPath` merge the plugin toggle writes back.
+// session-projection registry merge, and the token-meter `contextPressure`
+// SessionProjectionMap key the publish path reads.
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-token-meter'
-import type {} from '@deepseek-ai/dsh-app-boot'
 import { SANDBOX_MODES, setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { MessageId, ReasoningEffortId } from '@deepseek-ai/dsh-llm/brand'
@@ -74,7 +72,6 @@ import { anchorRetry, applyEvent, createScratch, foldFromLog, initialState } fro
 import type { FoldScratch } from './fold'
 import type { FoldState } from './types'
 import { renderAssistantResultPlain, renderNodePlain } from './plain'
-import { disableEntryText, enableEntryText } from './patch-toggle'
 import { collectCredentialRefs, collectPluginFields, groupProviders, sessionTitlesById } from './settings-data'
 import { createTuiStore } from './store'
 import { buildTuiStartupProgram, parseTuiStartupIntent } from './startup-args'
@@ -118,8 +115,17 @@ function userMessage(text: string, attachments: readonly ImageAttachmentRef[] = 
   })
 }
 
-/** Chinese copy for a rejected feedback mutation. */
-function feedbackErrorText(error: { code: string }): string {
+/** Localized copy for a rejected feedback mutation. */
+function feedbackErrorText(error: { code: string }, locale: 'zh' | 'en'): string {
+  if (locale === 'en') {
+    switch (error.code) {
+      case 'session-not-found': return 'The session is not persisted yet; feedback was not recorded'
+      case 'target-not-found': return 'The message is not a rateable final assistant message'
+      case 'note-blank': return 'The feedback note must not be blank'
+      case 'note-too-large': return 'The feedback note is too long'
+      default: return 'Failed to write feedback'
+    }
+  }
   switch (error.code) {
     case 'session-not-found': return '会话尚未持久化，无法记录反馈'
     case 'target-not-found': return '该消息不是可评分的助手最终消息'
@@ -137,11 +143,6 @@ const IMAGE_MEDIA_BY_EXT: Record<string, ImageMediaType> = {
   gif: 'image/gif',
   webp: 'image/webp',
 }
-
-/** Poll interval (ms) while waiting for one plugin toggle's hot-apply. */
-const TOGGLE_SETTLE_INTERVAL_MS = 400
-/** Poll attempt cap: heavy adapters hot-apply slowly (resource disposal). */
-const TOGGLE_SETTLE_MAX_ATTEMPTS = 150
 
 /** Process-facing facts the surface owns across publishes. */
 interface Surface {
@@ -376,8 +377,8 @@ async function loadSettingsData(ctx: Context, surface: Surface, tuiScope: Settin
       credentials: credentialRows,
     },
     plugins: [...ctx.loader.entries()]
-      // Groups and tree roots are not toggleable plugins: skip them so the
-      // switch never targets the include row itself.
+      // Groups and tree roots are composition structure rather than plugin
+      // rows. The remaining Loader entries form the complete read-only list.
       .filter(entry => entry.options.group !== true && entry.id !== entry.options.id)
       .map((entry) => {
         const descriptor = descriptors.find(candidate => candidate.ns === entry.options.id)
@@ -926,17 +927,9 @@ async function boot(
   }).catch(() => {
     // A listing racing teardown must not disturb the exit path.
   })
-  const bootLiveRows: SessionEntry[] = ctx.agents.list().map((agent): SessionEntry => ({
-    id: agent.id,
-    model: agent.options.model ?? '',
-    status: agent.status,
-  }))
-  void loadSessionRows(ctx, bootLiveRows).then((rows) => {
-    surface.version += 1
-    store.set({ ...store.getSnapshot(), sessions: rows, version: surface.version })
-  }).catch(() => {
-    // A corpus listing racing teardown must not disturb the exit path.
-  })
+  // Session titles require inspecting persisted logs. Keep that work off the
+  // startup path; opening /sessions calls refreshPanels() and loads the same
+  // rows on demand after the first terminal frame is interactive.
   /** Reload the /settings pages after any settings or credential commit. */
   const refreshSettings = (): void => {
     void loadSettingsData(ctx, surface, tuiScope).then((data) => {
@@ -947,37 +940,10 @@ async function boot(
       // A refresh racing service teardown must not disturb the exit path.
     })
   }
-  /**
-   * Poll the loader tree until one plugin entry's disabled state settles on
-   * the toggle's target, then republish the settings pages so the row's
-   * ●/○ and dim/bright flip. The profile patch is hot-applied through the
-   * launcher's HMR watch, whose latency varies widely (heavy adapters
-   * dispose/load slowly), so fixed one-shot refresh delays can all fire
-   * before the tree reflects the write. Each poll only CHECKS the entry —
-   * the store republishes exactly once, when the flip is observed.
-   * @param id - the bare loader entry id that was toggled.
-   * @param enabling - whether the toggle enables (target `disabled === false`).
-   */
-  const watchToggleSettle = (id: string, enabling: boolean): void => {
-    const check = (attempt: number): void => {
-      try {
-        const entry = [...ctx.loader.entries()].find(candidate => candidate.options.id === id)
-        if (entry !== undefined && entry.disabled === !enabling) {
-          refreshSettings()
-          // The row's loaded flag (fiber presence) can trail the disabled flag
-          // by one start/stop round; one trailing refresh catches it.
-          setTimeout(() => { refreshSettings() }, 800)
-          return
-        }
-      } catch {
-        // A tree update in flight can make the entry scan throw; the next
-        // poll retries, and the attempt cap bounds the wait either way.
-      }
-      if (attempt >= TOGGLE_SETTLE_MAX_ATTEMPTS) return
-      setTimeout(() => { check(attempt + 1) }, TOGGLE_SETTLE_INTERVAL_MS)
-    }
-    check(0)
-  }
+  /** Current UI locale, including the initial settings value before publish. */
+  const uiLocale = (): 'zh' | 'en' => surface.settings?.general.locale ?? (tuiScope.get() as GeneralSettings).locale
+  /** Select copy without passing display language into Harness services. */
+  const uiText = (zh: string, en: string): string => uiLocale() === 'en' ? en : zh
   let unsubscribe = subscribe(ctx, store, surface, refreshSettings)
   const isTty = process.stdin.isTTY === true && process.stdout.isTTY === true
   // Print mode never mounts the interactive answerers: asks fail closed,
@@ -1069,13 +1035,15 @@ async function boot(
           if (presetId !== undefined) {
             // The resumed session rebuilds the composition its log was
             // produced under (model-visible ⟺ logged).
-            if (presetService === undefined) throw new Error('agent 预设服务未加载（bundle 缺 dsh-agent-presets）')
+            if (presetService === undefined) {
+              throw new Error(uiText('agent 预设服务未加载（bundle 缺 dsh-agent-presets）', 'Agent preset service is not loaded (bundle lacks dsh-agent-presets)'))
+            }
             await presetService.mount(agentCtx, presetId)
           }
         },
       })
     } catch (error) {
-      return `恢复失败：${error instanceof Error ? error.message : String(error)}`
+      return `${uiText('恢复失败', 'Resume failed')}: ${error instanceof Error ? error.message : String(error)}`
     }
     // Phase 2 — the swap. Once the old subscription drops, no failure may
     // leave the surface without a subscription: input would keep reaching an
@@ -1111,7 +1079,7 @@ async function boot(
       return null
     } catch (error) {
       fail(ctx, error)
-      return `恢复失败：${error instanceof Error ? error.message : String(error)}`
+      return `${uiText('恢复失败', 'Resume failed')}: ${error instanceof Error ? error.message : String(error)}`
     }
   }
   /**
@@ -1124,11 +1092,17 @@ async function boot(
     // started yet) — a started conversation's history was produced under its
     // preset's tools, so its preset is fixed.
     if (surface.agent.session.events.some(event => event.type === 'turn/start')) {
-      return '预设已锁定：当前会话已经开始对话，预设不可再变更（请 /new 开新会话后再切换）'
+      return uiText(
+        '预设已锁定：当前会话已经开始对话，预设不可再变更（请 /new 开新会话后再切换）',
+        'Preset locked: this conversation has started; use /new before selecting another preset',
+      )
     }
     const presetService = ctx.get('agentPresets') as { recompose(agentCtx: Context, id: string): Promise<{ id: string }> } | undefined
     if (presetService === undefined) {
-      return 'agent 预设服务未加载（bundle 缺 dsh-agent-presets）'
+      return uiText(
+        'agent 预设服务未加载（bundle 缺 dsh-agent-presets）',
+        'Agent preset service is not loaded (bundle lacks dsh-agent-presets)',
+      )
     }
     try {
       // The re-link is safe by construction: an unknown or unusable preset
@@ -1142,7 +1116,7 @@ async function boot(
       refreshSettings()
       return null
     } catch (error) {
-      return `切换预设失败：${error instanceof Error ? error.message : String(error)}`
+      return `${uiText('切换预设失败', 'Preset switch failed')}: ${error instanceof Error ? error.message : String(error)}`
     }
   }
   /** Print the ambiguous-resume candidates to stderr and request the usage exit. */
@@ -1297,45 +1271,47 @@ async function boot(
             service?.rename(surface.agent.session, title)
             return null
           } catch (error) {
-            return `重命名失败：${error instanceof Error ? error.message : String(error)}`
+            return `${uiText('重命名失败', 'Rename failed')}: ${error instanceof Error ? error.message : String(error)}`
           }
         },
         changeWorkspace: async (path) => {
           try {
             const target = resolve(path)
             const { statSync } = await import('node:fs')
-            if (!statSync(target).isDirectory()) return '目标不是目录'
+            if (!statSync(target).isDirectory()) return uiText('目标不是目录', 'The target is not a directory')
             process.chdir(target)
             surface.cwd = target
             surface.version += 1
             store.set({ ...store.getSnapshot(), cwd: target, version: surface.version })
             return null
           } catch (error) {
-            return `切换失败：${error instanceof Error ? error.message : String(error)}`
+            return `${uiText('切换失败', 'Workspace switch failed')}: ${error instanceof Error ? error.message : String(error)}`
           }
         },
         attachFile: async (path) => {
           const attachments = ctx.get('attachments')
-          if (attachments === undefined) return '附件服务未加载（bundle 缺 dsh-attachment-local）'
+          if (attachments === undefined) {
+            return uiText('附件服务未加载（bundle 缺 dsh-attachment-local）', 'Attachment service is not loaded (bundle lacks dsh-attachment-local)')
+          }
           try {
             const bytes = readFileSync(resolve(path))
             const mediaType = IMAGE_MEDIA_BY_EXT[extname(path).slice(1).toLowerCase()]
-            if (mediaType === undefined) return '仅支持图片附件（png/jpg/gif/webp）'
+            if (mediaType === undefined) return uiText('仅支持图片附件（png/jpg/gif/webp）', 'Only png/jpg/gif/webp image attachments are supported')
             const ref = await attachments.saveImage({ data: new Uint8Array(bytes), mediaType, name: basename(path) })
             surface.pendingAttachments = [...surface.pendingAttachments, ref]
             surface.version += 1
             store.set({ ...store.getSnapshot(), attachmentCount: surface.pendingAttachments.length, version: surface.version })
             return null
           } catch (error) {
-            return `附加失败：${error instanceof Error ? error.message : String(error)}`
+            return `${uiText('附加失败', 'Attach failed')}: ${error instanceof Error ? error.message : String(error)}`
           }
         },
         forkSession: async (atSeq) => {
           try {
             const forkId = await createForkArtifact(ctx, surface, atSeq)
-            return forkId === null ? '没有已完成回合可分叉' : null
+            return forkId === null ? uiText('没有已完成回合可分叉', 'There is no completed turn to fork') : null
           } catch (error) {
-            return `分叉失败：${error instanceof Error ? error.message : String(error)}`
+            return `${uiText('分叉失败', 'Fork failed')}: ${error instanceof Error ? error.message : String(error)}`
           }
         },
         selectModel: (provider, model, reasoningEffort) => {
@@ -1388,37 +1364,6 @@ async function boot(
           setSandboxMode(surface.agent.session, next)
           return next
         },
-        togglePlugin: async (id) => {
-          // The plugins-page switch writes the profile's live user patch
-          // layer; the launcher's HMR watch hot-applies the file, so the
-          // toggle takes effect without a restart.
-          if (id === name) {
-            return { error: '不能关闭 TUI 本身（会终止当前界面）；请直接编辑 cordis.patch.yml 后重启' }
-          }
-          const patchPath = ctx.get('profilePatchPath')
-          if (patchPath === undefined) {
-            return { error: '当前启动方式没有可热改的用户 patch 层（需要 --profile），无法切换插件开关' }
-          }
-          try {
-            // The renderer passes the BARE entry id — the exact key the
-            // profile patch layer targets.
-            const entry = [...ctx.loader.entries()].find(candidate => candidate.options.id === id)
-            const enabling = entry?.disabled === true
-            const content = readFileSync(patchPath, 'utf8')
-            const next = enabling ? enableEntryText(content, id) : disableEntryText(content, id)
-            if (next === content) return { enabled: !enabling }
-            writeFileSync(patchPath, next, 'utf8')
-            // The HMR watcher re-applies the layer asynchronously; poll until
-            // the loader tree reflects the toggle, then republish the plugins
-            // page so the ●/○ dot and dim/bright flip live. Fixed one-shot
-            // delays can all land before a slow hot-apply (heavy adapters),
-            // which left the row stale indefinitely.
-            watchToggleSettle(id, enabling)
-            return { enabled: enabling }
-          } catch (error) {
-            return { error: `切换失败：${error instanceof Error ? error.message : String(error)}` }
-          }
-        },
         approve: (outcome) => {
           surface.pendingApproval = null
           const resolve = surface.approvalResolve
@@ -1441,7 +1386,7 @@ async function boot(
             await ctx.settings.update(settingsNamespace(ns), patch as object)
             return null
           } catch (error) {
-            return `写入失败：${error instanceof Error ? error.message : String(error)}`
+            return `${uiText('写入失败', 'Write failed')}: ${error instanceof Error ? error.message : String(error)}`
           }
         },
         setCredential: (ref, value) => ctx.credentials.set(credentialRef(ref), value),
@@ -1475,7 +1420,9 @@ async function boot(
         },
         rateMessage: async (messageId, rating) => {
           const service = ctx.get('messageFeedback')
-          if (service === undefined) return '消息反馈服务未加载（bundle 缺 dsh-message-feedback）'
+          if (service === undefined) {
+            return uiText('消息反馈服务未加载（bundle 缺 dsh-message-feedback）', 'Message feedback service is not loaded (bundle lacks dsh-message-feedback)')
+          }
           const sessionId = surface.agent.id
           const current = surface.feedback.get(messageId)
           // Rating the same value again removes the item (Web toggle parity).
@@ -1491,7 +1438,7 @@ async function boot(
               await loadFeedback()
               return null
             }
-            return feedbackErrorText(result.error)
+            return feedbackErrorText(result.error, uiLocale())
           }
           const result = await service.put({
             sessionId,
@@ -1524,9 +1471,9 @@ async function boot(
               await loadFeedback()
               return null
             }
-            return feedbackErrorText(retry.error)
+            return feedbackErrorText(retry.error, uiLocale())
           }
-          return feedbackErrorText(result.error)
+          return feedbackErrorText(result.error, uiLocale())
         },
         ...(panel === null ? {} : { startup: { panel } }),
       })
@@ -1564,7 +1511,7 @@ async function boot(
         await surface.agent.whenIdle()
         const nodes = store.getSnapshot().nodes
         for (const node of nodes.slice(firstCount)) {
-          const rendered = renderNodePlain(node)
+          const rendered = renderNodePlain(node, (tuiScope.get() as GeneralSettings).locale)
           if (rendered !== '') process.stdout.write(rendered + '\n')
         }
       }
@@ -1575,7 +1522,7 @@ async function boot(
       const legacyDone = runLegacy({
         onPrompt: async (text) => { await runLinearPrompt(text) },
         onExit: () => requestExit(ctx, EXIT_OK),
-      })
+      }, (tuiScope.get() as GeneralSettings).locale)
       await legacyDone
     }
   } catch (error) {

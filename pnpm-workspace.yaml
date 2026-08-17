@@ -69,4 +69,5 @@ minimumReleaseAgeExclude:
   - node-addon-require-builtin@0.1.4
 
 patchedDependencies:
+  ink@7.1.1: patches/ink@7.1.1.patch
   node-pty@1.1.0: patches/node-pty@1.1.0.patch

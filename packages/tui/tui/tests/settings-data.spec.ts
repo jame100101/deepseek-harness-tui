@@ -101,31 +101,37 @@ describe('buildSettingsRows theme and locale', () => {
   })
 })
 
-describe('buildSettingsRows plugins toggle', () => {
-  it('binds every plugin row to the toggle action with its config namespace', () => {
+describe('buildSettingsRows plugin inventory', () => {
+  it('renders every plugin row as read-only status', () => {
     const fixture = modelsSettings()
     fixture.settings.plugins = [
       { id: 'storage', name: 'storage', enabled: true, loaded: true, namespace: 'storage' },
       { id: 'off', name: 'off', enabled: false, loaded: false },
     ]
     const rows = buildSettingsRows(fixture, 'plugins', 'zh')
-    expect(rows[0]?.text).toContain('Enter 切换开关')
+    expect(rows[0]?.text).toContain('完整只读状态清单')
     const storage = rows.find(row => row.key === 'pl-storage')
-    expect(storage?.action).toBe('toggle-plugin')
-    expect(storage?.meta).toEqual({ id: 'storage', enabled: true, ns: 'storage' })
-    expect(storage?.text).toBe('● storage · storage · 可配置')
+    expect(storage?.action).toBeUndefined()
+    expect(storage?.meta).toBeUndefined()
+    expect(storage?.text).toBe('● storage · storage')
     const off = rows.find(row => row.key === 'pl-off')
-    expect(off?.action).toBe('toggle-plugin')
-    expect(off?.meta).toEqual({ id: 'off', enabled: false })
+    expect(off?.action).toBeUndefined()
+    expect(off?.meta).toBeUndefined()
     expect(off?.text).toBe('○ off · off · 未加载 · 已禁用')
+    expect(off?.dim).toBe(true)
+    expect(storage?.dim).toBeUndefined()
+    expect(rows.filter(row => row.key.startsWith('pl-') && row.key !== 'pl-head' && row.key !== 'pl-foot')
+      .every(row => row.action === undefined)).toBe(true)
+    expect(rows.at(-1)?.text).toContain('让 Agent 为你修改该配置文件')
   })
 
-  it('renders the toggle header in English', () => {
+  it('renders the read-only guidance in English', () => {
     const fixture = modelsSettings()
     fixture.settings.plugins = [{ id: 'storage', name: 'storage', enabled: true, loaded: true }]
     const rows = buildSettingsRows(fixture, 'plugins', 'en')
-    expect(rows[0]?.text).toContain('Enter toggles')
+    expect(rows[0]?.text).toContain('complete read-only status list')
     expect(rows.some(row => row.key === 'pl-storage' && row.text === '● storage · storage')).toBe(true)
+    expect(rows.at(-1)?.text).toContain('ask the Agent to update that configuration file')
   })
 })
 
@@ -320,6 +326,31 @@ describe('en locale', () => {
     }
     expect(collectPluginFields(schema, { apiKey: '[redacted]' }, 'en')[0]?.display).toBe('••• set')
     expect(collectPluginFields(schema, { apiKey: '[redacted]' }, 'zh')[0]?.display).toBe('••• 已设置')
+  })
+
+  it('keeps renderer-owned copy English across every panel projection', () => {
+    const fixture = modelsSettings()
+    fixture.settings.general = { busyEnter: 'steer', thinking: 'expanded', theme: 'light', locale: 'en' }
+    fixture.settings.plugins = [
+      { id: 'sessions', name: 'sessions', enabled: true, loaded: true },
+      { id: 'optional', name: 'optional', enabled: false, loaded: false },
+    ]
+    fixture.settings.inventory = {
+      namespaces: [{ ns: 'tui', applies: 'live', revision: 1, secretSlots: 0, secretSet: 0 }],
+      credentials: [{ ref: 'API_KEY', configured: false, writable: true }],
+      inspectProviders: 2,
+    }
+    fixture.settings.presets = [{ id: 'standard', name: 'Standard', trust: 'system' }]
+    fixture.settings.currentPreset = 'standard'
+    const rows = [
+      ...SETTINGS_PAGES.flatMap(page => buildSettingsRows(fixture, page, 'en')),
+      ...buildJobsRows([], 'en'),
+      ...buildSessionRows([{ id: 'session-1', model: 'model', status: 'persisted', live: false }], undefined, 'en'),
+      ...buildSubagentRows([], 'en'),
+      ...buildWorkflowRows([], 'en'),
+      ...buildPluginConfigRows([{ key: 'limit', kind: 'number', display: '1' }], 'sample', 'en'),
+    ]
+    expect(rows.map(row => row.text).join('\n')).not.toMatch(/\p{Script=Han}/u)
   })
 })
 

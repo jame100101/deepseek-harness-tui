@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import {
   nextCodePointBoundary, previousCodePointBoundary, scrollOffsetForScrollbarRow, selectComposerLayout, selectInputViewport,
-  selectPanelViewport, selectScrollbar, selectTranscriptViewport,
+  selectPanelViewport, selectScrollbar, selectTerminalFrameWidth, selectTranscriptViewport, transcriptLineAtRow,
 } from '../src/viewport'
 import type { TranscriptLine } from '../src/viewport'
 
 const line = (key: string, text = key): TranscriptLine => ({ key, text })
+
+describe('selectTerminalFrameWidth', () => {
+  it.each([
+    { columns: 1, width: 1 },
+    { columns: 2, width: 1 },
+    { columns: 80, width: 79 },
+    { columns: 100, width: 99 },
+  ])('reserves the physical autowrap column at $columns columns', ({ columns, width }) => {
+    expect(selectTerminalFrameWidth(columns)).toBe(width)
+  })
+})
 
 describe('selectTranscriptViewport', () => {
   it('follows the newest lines at offset 0', () => {
@@ -49,6 +60,29 @@ describe('selectTranscriptViewport', () => {
     const lines = Array.from({ length: 10 }, (_, index) => line(`l${index}`))
     const viewport = selectTranscriptViewport(lines, 5, 2, 1)
     expect(viewport.lines.map(entry => entry.text)).toEqual(['l4', 'l5', 'l6', 'l7'])
+  })
+})
+
+describe('transcriptLineAtRow', () => {
+  it('accounts for bottom alignment when the transcript is shorter than its viewport', () => {
+    const lines = [line('a'), line('b')]
+    expect(transcriptLineAtRow(lines, 5, 0, 0, 0)).toBeUndefined()
+    expect(transcriptLineAtRow(lines, 5, 0, 0, 2)).toBeUndefined()
+    expect(transcriptLineAtRow(lines, 5, 0, 0, 3)?.key).toBe('a')
+    expect(transcriptLineAtRow(lines, 5, 0, 0, 4)?.key).toBe('b')
+  })
+
+  it('excludes a pinned bottom row from disclosure hit testing', () => {
+    const lines = [line('a'), line('b')]
+    expect(transcriptLineAtRow(lines, 5, 0, 1, 2)?.key).toBe('a')
+    expect(transcriptLineAtRow(lines, 5, 0, 1, 3)?.key).toBe('b')
+    expect(transcriptLineAtRow(lines, 5, 0, 1, 4)).toBeUndefined()
+  })
+
+  it('maps scrolled rows to the same slice used by the viewport', () => {
+    const lines = Array.from({ length: 10 }, (_, index) => line(`l${index}`))
+    expect(transcriptLineAtRow(lines, 5, 3, 0, 0)?.key).toBe('l2')
+    expect(transcriptLineAtRow(lines, 5, 3, 0, 4)?.key).toBe('l6')
   })
 })
 
@@ -244,6 +278,23 @@ describe('selectComposerLayout', () => {
     expect(layout.visibleLines).toEqual(['中文', '测试', '文本'])
     expect(layout.caretLine).toBe(2)
     expect(layout.caretColumn).toBe(4)
+  })
+
+  it('uses Ink 7.1.1 display widths for emoji and ambiguous Unicode symbols', () => {
+    const layout = selectComposerLayout('a⚙😀中', 4, 5, 5)
+    expect(layout.visibleLines).toEqual(['a⚙😀', '中'])
+    expect(layout.caretLine).toBe(0)
+    expect(layout.caretColumn).toBe(4)
+  })
+
+  it.each([
+    { offset: 3, line: 0, column: 3 },
+    { offset: 4, line: 1, column: 0 },
+    { offset: 5, line: 1, column: 1 },
+  ])('keeps width-1, exact-width, and width+1 caret positions stable at offset $offset', ({ offset, line, column }) => {
+    const layout = selectComposerLayout('abcde', offset, 4, 5)
+    expect(layout.caretLine).toBe(line)
+    expect(layout.caretColumn).toBe(column)
   })
 
   it('returns one empty line for an empty value', () => {

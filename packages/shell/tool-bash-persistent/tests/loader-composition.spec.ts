@@ -84,10 +84,12 @@ suite('persistent Bash through a real cordis.yml Loader composition', () => {
       '  config:',
       '    pollIntervalMs: 10',
       '    exactProbeAfterMs: 20',
-      '    idleSilenceMs: 100',
+      // A mismatched PS1 would reach the tool deadline before this fallback;
+      // every command in this composition therefore proves exact prompt readiness.
+      '    idleSilenceMs: 10000',
       '    handoffGraceMs: 100',
       '    scrollbackLines: 20000',
-      '    timeoutMs: 2000',
+      '    timeoutMs: 12000',
       '    disposeGraceMs: 500',
       "- name: '@deepseek-ai/dsh-tool-bash-persistent'",
       '  config:',
@@ -134,14 +136,14 @@ suite('persistent Bash through a real cordis.yml Loader composition', () => {
     await execute('state', 'export KEEP=loader; mkdir -p nested; cd nested')
     const observed = text(await execute('observe', 'printf "cwd=%s keep=%s\\n" "$PWD" "$KEEP"'))
     expect(observed).toContain(`cwd=${join(root, 'nested')} keep=loader`)
-    expect(observed).not.toContain('DSH_PERSISTENT_BASH')
+    expect(observed).not.toContain('dsh>')
 
     const multiline = text(await execute(
       'multiline',
       'value="line one"\nprintf "%s:%s\\n" "$value" "it\'s fine"',
     ))
     expect(multiline).toBe("line one:it's fine")
-    expect(multiline).not.toContain('DSH_PERSISTENT_BASH')
+    expect(multiline).not.toContain('dsh>')
 
     const heredoc = text(await execute(
       'heredoc',

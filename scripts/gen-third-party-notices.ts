@@ -74,6 +74,7 @@ const OVERRIDES: Record<string, { license?: string; repo?: string }> = {
   '@modelcontextprotocol/server-everything': { license: 'MIT / Apache-2.0', repo: 'https://github.com/modelcontextprotocol/servers' },
   '@modelcontextprotocol/server-filesystem': { license: 'MIT / Apache-2.0', repo: 'https://github.com/modelcontextprotocol/servers' },
   // No repository field in the published manifest.
+  '@alcalzone/ansi-tokenize': { repo: 'https://github.com/AlCalzone/ansi-tokenize' },
   'node-addon-require-builtin': { repo: 'https://www.npmjs.com/package/node-addon-require-builtin' },
 }
 

@@ -100,11 +100,12 @@ type StubMode =
   | 'paged-scrollback'
 
 class StubPtySession implements TerminalBackendSession {
-  readonly motd = '__DSH_PERSISTENT_BASH_PROMPT__ '
+  readonly motd = 'dsh> '
   readonly pid = 123
   statusValue: TerminalSessionStatus = { kind: 'running' }
   scrollback = this.motd
   closed: string[] = []
+  requests: TerminalSendRequest[] = []
   mode: StubMode
   sends = 0
   pendingText = ''
@@ -115,6 +116,7 @@ class StubPtySession implements TerminalBackendSession {
   }
 
   startSend(request: TerminalSendRequest): TerminalSendOperation {
+    this.requests.push(request)
     this.sends += 1
     if (request.text.startsWith('stty -echo')) {
       if (this.mode === 'init-exit') {
@@ -315,6 +317,7 @@ describe('tool-bash-persistent', () => {
     expect(text(await call(ctx, owner, 'echo two'))).toBe('hello from stub')
     expect(stub.sessions).toHaveLength(1)
     expect(stub.sessions[0]?.sends).toBe(3)
+    expect(stub.sessions[0]?.requests[0]?.text).toBe("stty -echo; PS1=$'dsh> '")
 
     const ownerWithoutCwd = agent(ctx, undefined)
     expect(text(await call(ctx, ownerWithoutCwd, 'pwd'))).toBe('hello from stub')
@@ -343,13 +346,13 @@ describe('tool-bash-persistent', () => {
     session.mode = 'prompt-only'
     const promptFallback = text(await call(ctx, owner, 'bad {'))
     expect(promptFallback).toContain('bash: synt')
-    expect(promptFallback).not.toContain('DSH_PERSISTENT_BASH_PROMPT')
+    expect(promptFallback).not.toContain('dsh>')
 
     session.mode = 'prompt-crlf'
     session.scrollback = ''
     const crlfPromptFallback = text(await call(ctx, owner, 'bad {'))
     expect(crlfPromptFallback).toContain('bash: synt')
-    expect(crlfPromptFallback).not.toContain('DSH_PERSISTENT_BASH_PROMPT')
+    expect(crlfPromptFallback).not.toContain('dsh>')
 
     session.mode = 'end-only'
     session.scrollback = ''
@@ -444,7 +447,7 @@ describe('tool-bash-persistent', () => {
     const result = text(await call(ctx, owner, 'bad {'))
     expect(result).toContain('partial syntax output')
     expect(result).toContain('bash: syntax error')
-    expect(result).not.toContain('DSH_PERSISTENT_BASH_PROMPT')
+    expect(result).not.toContain('dsh>')
     expect(result).not.toContain('DSH_PERSISTENT_BASH_START')
   })
 

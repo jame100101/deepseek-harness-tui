@@ -109,8 +109,14 @@ export function projectCallCard(view: ToolCallView | null, fallbackDetail: strin
   }
 }
 
-/** Project one completed-call view into card lines. */
-export function projectResultCard(view: ToolResultView | null, fallbackText: string): CardLine[] {
+/**
+ * Project one completed-call view into card lines.
+ * @param view - structured result presentation, when available.
+ * @param fallbackText - plain result text used by generic/unknown cards.
+ * @param locale - language for renderer-owned labels.
+ * @returns bounded terminal card lines.
+ */
+export function projectResultCard(view: ToolResultView | null, fallbackText: string, locale: 'zh' | 'en' = 'zh'): CardLine[] {
   if (view === null) {
     return fallbackText === '' ? [] : lines(fallbackText).map(line => ({ text: `  ${line.text}`, color: 'gray' as const }))
   }
@@ -153,14 +159,21 @@ export function projectResultCard(view: ToolResultView | null, fallbackText: str
         for (const path of search.paths) out.push({ text: `  ${path}`, color: 'gray' })
       }
       out.push({
-        text: search.truncated ? `… 已截断（显示 ${search.shape === 'matches' ? search.files.length : search.paths.length}/${search.total}）` : `共 ${search.total} 项`,
+        text: search.truncated
+          ? (locale === 'en'
+            ? `… truncated (showing ${search.shape === 'matches' ? search.files.length : search.paths.length}/${search.total})`
+            : `… 已截断（显示 ${search.shape === 'matches' ? search.files.length : search.paths.length}/${search.total}）`)
+          : (locale === 'en' ? `${search.total} items` : `共 ${search.total} 项`),
         color: 'yellow',
       })
       return out.slice(0, MAX_CARD_LINES)
     }
     case 'read': {
       const read = view as ReadResultView
-      const out: CardLine[] = [{ text: `── ${read.path} (${read.offset}–${read.offset + read.lines.length - 1} of ${read.totalLines} 行)`, color: 'gray' }]
+      const out: CardLine[] = [{
+        text: `── ${read.path} (${read.offset}–${read.offset + read.lines.length - 1} of ${read.totalLines}${locale === 'en' ? ' lines' : ' 行'})`,
+        color: 'gray',
+      }]
       for (const line of read.lines) out.push({ text: `${line.number}: ${line.text}`, color: 'gray' })
       if (read.lines.length === 0) out.push({ text: '  (empty window)', color: 'gray' })
       if (read.content !== undefined && read.lines.length === 0) out.push(...lines(blocksText(read.content)))
@@ -178,10 +191,10 @@ export function projectResultCard(view: ToolResultView | null, fallbackText: str
           })
           out.push({ text: `  ${source.url}`, color: 'gray' })
         }
-        if (web.truncated) out.push({ text: '… 来源列表已截断', color: 'yellow' })
+        if (web.truncated) out.push({ text: locale === 'en' ? '… source list truncated' : '… 来源列表已截断', color: 'yellow' })
       } else {
         out.push({ text: `${web.url} → HTTP ${web.statusCode}`, color: 'cyan' })
-        if (web.truncated) out.push({ text: '… 内容已截断', color: 'yellow' })
+        if (web.truncated) out.push({ text: locale === 'en' ? '… content truncated' : '… 内容已截断', color: 'yellow' })
       }
       return out.slice(0, MAX_CARD_LINES)
     }

@@ -1,6 +1,6 @@
 # @jame100101/dsh-tui
 
-English | [中文](README.zh.md)
+[English](README.md) | 中文
 
 `dsh-tui` — a thin, Claude Code-style command line over the DeepSeek Harness
 terminal surface. It boots the TUI profile with a small user-facing flag

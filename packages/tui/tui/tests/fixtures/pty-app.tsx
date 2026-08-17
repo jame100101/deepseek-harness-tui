@@ -1,0 +1,87 @@
+import { runInk } from '../../src/render'
+import { createTuiStore } from '../../src/store'
+import type { TuiHost } from '../../src/render'
+import type { TuiNode } from '../../src/types'
+
+const nodes: TuiNode[] = Array.from({ length: 80 }, (_, index) => ({
+  kind: 'user',
+  id: index,
+  text: `第${index}行 😀 ⚙ ${'long '.repeat(20)}`,
+}))
+
+const store = createTuiStore({
+  version: 0,
+  nodes,
+  trace: [],
+  todos: [],
+  stats: {
+    turns: 0,
+    steps: 0,
+    llmMs: 0,
+    toolMs: 0,
+    ttftMs: 0,
+    stepsWithTtft: 0,
+    decodeMs: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
+    contextWindow: 0,
+  },
+  live: null,
+  busy: false,
+  model: 'pty-fixture',
+  sessionId: 'pty-fixture',
+  cwd: '.',
+  pendingApproval: null,
+  pendingQuestion: null,
+  commands: [],
+  models: [{ provider: 'fixture', model: 'pty-fixture', label: 'pty-fixture' }],
+  sessions: [],
+  queued: [],
+  settings: {
+    general: { busyEnter: 'queue', thinking: 'collapsed', theme: 'dark', locale: 'en' },
+    models: { providers: [], credentials: [] },
+    plugins: [],
+    configs: {},
+    inventory: { namespaces: [], credentials: [], inspectProviders: 0 },
+    presets: [],
+    currentPreset: undefined,
+  },
+  jobs: [],
+  subagents: [],
+  workflows: [],
+  feedback: new Map(),
+  plan: { active: false, pending: false },
+  goal: null,
+  reasoning: { effort: undefined, levels: [] },
+  attachmentCount: 0,
+  compaction: false,
+  sandbox: 'read-only',
+  occupancy: null,
+})
+
+const host: TuiHost = {
+  submit: () => {},
+  cancel: () => {},
+  exit: () => {},
+  newSession: () => {},
+  selectModel: () => {},
+  setEffort: () => {},
+  cycleSandbox: () => 'read-only',
+  approve: () => {},
+  answerQuestion: () => {},
+  updateSetting: () => Promise.resolve(),
+  setCredential: () => Promise.resolve(),
+  unsetCredential: () => Promise.resolve(),
+  refreshPanels: () => {},
+  refreshSettings: () => {},
+  killJob: () => {},
+  rateMessage: () => Promise.resolve(null),
+  resumeSession: () => Promise.resolve(null),
+  switchPreset: () => Promise.resolve(null),
+  updatePluginConfig: () => Promise.resolve(null),
+  renameSession: () => Promise.resolve(null),
+  changeWorkspace: () => Promise.resolve(null),
+  attachFile: () => Promise.resolve(null),
+  forkSession: () => Promise.resolve(null),
+}
+
+await runInk(store, host)

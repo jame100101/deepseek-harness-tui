@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { disableEntryText, enableEntryText } from '../src/patch-toggle'
+import {
+  disableEntryText,
+  enableEntryText,
+  hasConditionalDisabledState,
+  isPluginInventoryEntry,
+  pluginDisableBlockers,
+} from '../src/patch-toggle'
 
 const TEMPLATE = `# Your patch layer for this dsh profile, applied after every bundle layer:
 # a top-level YAML array of loader patch entries.
@@ -31,23 +37,62 @@ describe('disableEntryText', () => {
 })
 
 describe('enableEntryText', () => {
-  it('removes a whole entry whose only field is the disable line', () => {
+  it('writes an explicit false override for an existing disabled entry', () => {
     const next = enableEntryText('# c\n- id: storage\n  disabled: true\n- id: other\n', 'storage')
-    expect(next).toBe('# c\n- id: other\n')
+    expect(next).toBe('# c\n- id: storage\n  disabled: false\n- id: other\n')
   })
 
-  it('restores the flow-style [] when the last entry is removed (file stays a YAML array)', () => {
+  it('keeps an explicit false override when enabling the last entry', () => {
     const next = enableEntryText('# comments\n- id: timer\n  disabled: true\n', 'timer')
-    expect(next).toBe('# comments\n[]\n')
+    expect(next).toBe('# comments\n- id: timer\n  disabled: false\n')
   })
 
-  it('drops only the disable line when the entry keeps other fields', () => {
+  it('flips only the disable line when the entry keeps other fields', () => {
     const next = enableEntryText('- id: storage\n  disabled: true\n  config: {a: 1}\n', 'storage')
-    expect(next).toBe('- id: storage\n  config: {a: 1}\n')
+    expect(next).toBe('- id: storage\n  disabled: false\n  config: {a: 1}\n')
   })
 
-  it('leaves unrelated entries untouched', () => {
+  it('appends an explicit false override without changing unrelated entries', () => {
     const source = '- id: other\n  disabled: true\n'
-    expect(enableEntryText(source, 'storage')).toBe(source)
+    expect(enableEntryText(source, 'storage')).toBe('- id: other\n  disabled: true\n- id: storage\n  disabled: false\n')
+  })
+})
+
+describe('plugin toggle topology', () => {
+  const entry = (id: string, overrides: Record<string, unknown> = {}) => ({
+    id: `include:${id}`,
+    disabled: false,
+    options: { id, name: `plugin-${id}` },
+    fiber: { inject: {}, store: {} },
+    ...overrides,
+  })
+
+  it('keeps only leaf plugin rows in the inventory', () => {
+    expect(isPluginInventoryEntry(entry('session'))).toBe(true)
+    expect(isPluginInventoryEntry(entry('include:session', { subtree: {} }))).toBe(false)
+    expect(isPluginInventoryEntry(entry('group', { subgroup: {}, options: { id: 'group', name: 'group', group: true } }))).toBe(false)
+    expect(isPluginInventoryEntry(entry('0c4a12fe'))).toBe(false)
+  })
+
+  it('blocks a service provider while another enabled entry requires it', () => {
+    const sessions = entry('session', { fiber: { inject: {}, store: { sessions: {} } } })
+    const title = entry('session-title', { fiber: { inject: { sessions: null }, store: {} } })
+    const disabled = entry('old-query', { disabled: true, fiber: { inject: { sessions: null }, store: {} } })
+    const includeCarrier = entry('0c4a12fe', {
+      options: { id: 'include:session', name: 'include:session' },
+      subtree: {},
+      fiber: { inject: { sessions: null }, store: {} },
+    })
+    const dynamicLeaf = entry('0c4a12fe', {
+      options: { id: '0c4a12fe', name: '3d11c217' },
+      fiber: { inject: { sessions: null }, store: {} },
+    })
+    expect(pluginDisableBlockers([sessions, title, disabled, includeCarrier, dynamicLeaf], sessions))
+      .toEqual(['dynamic-plugin', 'session-title'])
+  })
+
+  it('recognizes expression-owned disabled states', () => {
+    expect(hasConditionalDisabledState(entry('bash', { options: { id: 'bash', name: 'bash', disabled: { __jsExpr: 'process.platform' } } }))).toBe(true)
+    expect(hasConditionalDisabledState(entry('plain', { options: { id: 'plain', name: 'plain', disabled: true } }))).toBe(false)
   })
 })

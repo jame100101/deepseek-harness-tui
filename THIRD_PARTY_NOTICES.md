@@ -32,6 +32,7 @@ External packages that a workspace package resolves at runtime. The tier covers 
 | Package | License |
 | --- | --- |
 | [`@agentclientprotocol/sdk`](https://github.com/agentclientprotocol/typescript-sdk) | Apache-2.0 |
+| [`@alcalzone/ansi-tokenize`](https://github.com/AlCalzone/ansi-tokenize) | MIT |
 | [`@anthropic-ai/claude-agent-sdk`](https://github.com/anthropics/claude-agent-sdk-typescript) | SEE LICENSE IN README.md |
 | [`@anthropic-ai/sdk`](https://github.com/anthropics/anthropic-sdk-typescript) | MIT |
 | [`@babel/code-frame`](https://github.com/babel/babel) | MIT |
@@ -51,17 +52,30 @@ External packages that a workspace package resolves at runtime. The tier covers 
 | [`@types/mdast`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@vscode/ripgrep`](https://github.com/microsoft/vscode-ripgrep) | MIT |
 | [`anser`](https://github.com/IonicaBizau/anser) | MIT |
+| [`ansi-escapes`](https://github.com/sindresorhus/ansi-escapes) | MIT |
+| [`ansi-styles`](https://github.com/chalk/ansi-styles) | MIT |
+| [`auto-bind`](https://github.com/sindresorhus/auto-bind) | MIT |
+| [`chalk`](https://github.com/chalk/chalk) | MIT |
 | [`chokidar`](https://github.com/paulmillr/chokidar) | MIT |
+| [`cli-boxes`](https://github.com/sindresorhus/cli-boxes) | MIT |
+| [`cli-cursor`](https://github.com/sindresorhus/cli-cursor) | MIT |
+| [`cli-truncate`](https://github.com/sindresorhus/cli-truncate) | MIT |
 | [`clsx`](https://github.com/lukeed/clsx) | MIT |
+| [`code-excerpt`](https://github.com/vadimdemedes/code-excerpt) | MIT |
 | [`commander`](https://github.com/tj/commander.js) | MIT |
 | [`diff`](https://github.com/kpdecker/jsdiff) | BSD-3-Clause |
 | [`e2b`](https://github.com/e2b-dev/e2b) | MIT |
+| [`es-toolkit`](https://github.com/toss/es-toolkit) | MIT |
 | [`eventsource-parser`](https://github.com/rexxars/eventsource-parser) | MIT |
 | [`fflate`](https://github.com/101arrowz/fflate) | MIT |
 | [`immer`](https://github.com/immerjs/immer) | MIT |
+| [`indent-string`](https://github.com/sindresorhus/indent-string) | MIT |
+| [`ink`](https://github.com/vadimdemedes/ink) | MIT |
+| [`is-in-ci`](https://github.com/sindresorhus/is-in-ci) | MIT |
 | [`js-yaml`](https://github.com/nodeca/js-yaml) | MIT |
 | [`katex`](https://github.com/KaTeX/KaTeX) | MIT |
 | [`koffi`](https://github.com/Koromix/koffi) | MIT |
+| [`marked`](https://github.com/markedjs/marked) | MIT |
 | [`mdast-util-from-markdown`](https://github.com/syntax-tree/mdast-util-from-markdown) | MIT |
 | [`mdast-util-gfm`](https://github.com/syntax-tree/mdast-util-gfm) | MIT |
 | [`mdast-util-math`](https://github.com/syntax-tree/mdast-util-math) | MIT |
@@ -76,23 +90,36 @@ External packages that a workspace package resolves at runtime. The tier covers 
 | [`micromark-util-types`](https://github.com/micromark/micromark/tree/main/packages/micromark-util-types) | MIT |
 | [`node-addon-require-builtin`](https://www.npmjs.com/package/node-addon-require-builtin) | MIT |
 | [`node-pty`](https://github.com/microsoft/node-pty) | MIT |
+| [`patch-console`](https://github.com/vadimdemedes/patch-console) | MIT |
 | [`picomatch`](https://github.com/micromatch/picomatch) | MIT |
 | [`react`](https://github.com/facebook/react) | MIT |
 | [`react-dom`](https://github.com/facebook/react) | MIT |
+| [`react-reconciler`](https://github.com/facebook/react) | MIT |
+| [`scheduler`](https://github.com/facebook/react) | MIT |
 | [`sharp`](https://github.com/lovell/sharp) | Apache-2.0 |
 | [`shiki`](https://github.com/shikijs/shiki) | MIT |
+| [`signal-exit`](https://github.com/tapjs/signal-exit) | ISC |
+| [`slice-ansi`](https://github.com/chalk/slice-ansi) | MIT |
+| [`stack-utils`](https://github.com/tapjs/stack-utils) | MIT |
+| [`string-width`](https://github.com/sindresorhus/string-width) | MIT |
 | [`supports-color`](https://github.com/chalk/supports-color) | MIT |
+| [`terminal-size`](https://github.com/sindresorhus/terminal-size) | MIT |
 | [`tsx`](https://github.com/privatenumber/tsx) | MIT |
 | [`turndown`](https://github.com/mixmark-io/turndown) | MIT |
+| [`type-fest`](https://github.com/sindresorhus/type-fest) | (MIT OR CC0-1.0) |
 | [`typescript`](https://github.com/microsoft/TypeScript) | Apache-2.0 |
 | [`use-sync-external-store`](https://github.com/facebook/react) | MIT |
+| [`widest-line`](https://github.com/sindresorhus/widest-line) | MIT |
+| [`wrap-ansi`](https://github.com/chalk/wrap-ansi) | MIT |
 | [`ws`](https://github.com/websockets/ws) | MIT |
 | [`yaml`](https://github.com/eemeli/yaml) | ISC |
+| [`yoga-layout`](https://github.com/git@github.com:facebook/yoga) | MIT |
 | [`zod`](https://github.com/colinhacks/zod) | MIT |
 | [`zustand`](https://github.com/pmndrs/zustand) | MIT |
 
 pnpm applies local patches to the following packages at install time, so shipped artifacts carry modified copies; each patch file is the complete record of the modification:
 
+- `ink@7.1.1` — [`patches/ink@7.1.1.patch`](patches/ink@7.1.1.patch)
 - `node-pty@1.1.0` — [`patches/node-pty@1.1.0.patch`](patches/node-pty@1.1.0.patch)
 
 ## Official Claude Code platform payloads
@@ -138,6 +165,7 @@ External packages **directly declared** only by repository tooling, test infrast
 | [`@types/ws`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@vitejs/plugin-react`](https://github.com/vitejs/vite-plugin-react) | MIT |
 | [`@vitest/coverage-v8`](https://github.com/vitest-dev/vitest) | MIT |
+| [`@xterm/headless`](https://github.com/xtermjs/xterm.js) | MIT |
 | [`@yarnpkg/cli-dist`](https://github.com/yarnpkg/berry) | BSD-2-Clause |
 | [`cytoscape`](https://github.com/cytoscape/cytoscape.js) | MIT |
 | [`cytoscape-cose-bilkent`](https://github.com/cytoscape/cytoscape.js-cose-bilkent) | MIT |

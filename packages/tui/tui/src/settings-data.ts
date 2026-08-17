@@ -21,7 +21,7 @@ export interface PanelRow {
   color?: string
   dim?: boolean
   /** Which renderer action Enter triggers; absent rows are inert. */
-  action?: 'toggle-busy-enter' | 'toggle-thinking' | 'toggle-theme' | 'toggle-locale' | 'select-model' | 'select-reasoning-effort' | 'edit-credential' | 'kill-job' | 'resume-session' | 'toggle-plugin' | 'toggle-config-boolean' | 'edit-config-number' | 'edit-config-secret' | 'edit-config-string' | 'select-preset'
+  action?: 'toggle-busy-enter' | 'toggle-thinking' | 'toggle-theme' | 'toggle-locale' | 'select-model' | 'select-reasoning-effort' | 'edit-credential' | 'kill-job' | 'resume-session' | 'toggle-config-boolean' | 'edit-config-number' | 'edit-config-secret' | 'edit-config-string' | 'select-preset'
   meta?: { provider?: string; model?: string; ref?: string; id?: string; effort?: string; ns?: string; field?: string; enabled?: boolean }
 }
 
@@ -135,24 +135,34 @@ export function buildSettingsRows(
       const rows: PanelRow[] = [{
         key: 'pl-head',
         text: locale === 'en'
-          ? 'Plugins · Enter toggles (writes cordis.patch.yml, hot-applied) · c opens config · Tab switches modules'
-          : '插件 Plugins · Enter 切换开关（实时写入 cordis.patch.yml，HMR 即时生效）· c 打开插件配置 · Tab 切换模块',
+          ? 'Plugins · complete read-only status list · Tab switches modules'
+          : '插件 Plugins · 完整只读状态清单 · Tab 切换模块',
         color: 'cyan',
       }]
+      if (data.plugins.length === 0) {
+        rows.push({ key: 'pl-empty', text: locale === 'en' ? '(no plugin entries)' : '（当前没有插件条目）', dim: true })
+      }
       for (const plugin of data.plugins) {
         rows.push({
           key: `pl-${plugin.id}`,
-          text: `${plugin.enabled ? '●' : '○'} ${plugin.id} · ${plugin.name}${plugin.loaded ? '' : (locale === 'en' ? ' · not loaded' : ' · 未加载')}${plugin.enabled ? '' : (locale === 'en' ? ' · disabled' : ' · 已禁用')}${plugin.namespace !== undefined ? (locale === 'en' ? ' · configurable' : ' · 可配置') : ''}`,
+          text: `${plugin.enabled ? '●' : '○'} ${plugin.id} · ${plugin.name}${plugin.loaded ? '' : (locale === 'en' ? ' · not loaded' : ' · 未加载')}${plugin.enabled ? '' : (locale === 'en' ? ' · disabled' : ' · 已禁用')}`,
           ...(plugin.enabled ? {} : { dim: true }),
-          action: 'toggle-plugin',
-          meta: {
-            id: plugin.id,
-            enabled: plugin.enabled,
-            ...(plugin.namespace !== undefined ? { ns: plugin.namespace } : {}),
-          },
         })
       }
-      rows.push({ key: 'pl-foot', text: locale === 'en' ? 'Toggles write the profile cordis.patch.yml and hot-apply through the launcher HMR watch (no restart)' : '开关写入 profile 的 cordis.patch.yml，经 launcher HMR 监视即时生效（无需重启）', dim: true })
+      rows.push({
+        key: 'pl-foot',
+        text: locale === 'en'
+          ? 'To enable or disable plugins, edit $DSH_HOME/profiles/<profile>/cordis.patch.yml'
+          : '启停插件请编辑 $DSH_HOME/profiles/<profile>/cordis.patch.yml',
+        dim: true,
+      })
+      rows.push({
+        key: 'pl-agent',
+        text: locale === 'en'
+          ? 'Tip: ask the Agent to update that configuration file for you'
+          : '提示：也可以直接让 Agent 为你修改该配置文件',
+        dim: true,
+      })
       return rows
     }
     case 'inventory': {

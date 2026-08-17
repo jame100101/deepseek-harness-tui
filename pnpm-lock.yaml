@@ -9,6 +9,7 @@ overrides:
   '@deepseek-ai/schemastery': link:vendor/schemastery
 
 patchedDependencies:
+  ink@7.1.1: 792048f58743f8b39cbeae935f42fdb59bf9cbcc3409f2c85e0c68ba9293643d
   node-pty@1.1.0: 7a0c04f1f49d798a9ffe2f7f414c01064a44ca2489772d0c3e1235ab336755e6
 
 importers:
@@ -358,6 +359,9 @@ importers:
 
   apps/tui-cli:
     dependencies:
+      '@alcalzone/ansi-tokenize':
+        specifier: 0.3.0
+        version: 0.3.0
       '@babel/code-frame':
         specifier: 7.29.7
         version: 7.29.7
@@ -406,18 +410,45 @@ importers:
       anser:
         specifier: 2.3.5
         version: 2.3.5
+      ansi-escapes:
+        specifier: 7.3.0
+        version: 7.3.0
+      ansi-styles:
+        specifier: 6.2.3
+        version: 6.2.3
+      auto-bind:
+        specifier: 5.0.1
+        version: 5.0.1
+      chalk:
+        specifier: 5.6.2
+        version: 5.6.2
       chokidar:
         specifier: 5.0.0
         version: 5.0.0
+      cli-boxes:
+        specifier: 4.0.1
+        version: 4.0.1
+      cli-cursor:
+        specifier: 4.0.0
+        version: 4.0.0
+      cli-truncate:
+        specifier: 6.1.1
+        version: 6.1.1
       clsx:
         specifier: 2.1.1
         version: 2.1.1
+      code-excerpt:
+        specifier: 4.0.0
+        version: 4.0.0
       commander:
         specifier: 15.0.0
         version: 15.0.0
       diff:
         specifier: 9.0.0
         version: 9.0.0
+      es-toolkit:
+        specifier: 1.49.0
+        version: 1.49.0
       eventsource-parser:
         specifier: 3.1.0
         version: 3.1.0
@@ -427,9 +458,15 @@ importers:
       immer:
         specifier: 10.2.0
         version: 10.2.0
+      indent-string:
+        specifier: 5.0.0
+        version: 5.0.0
       ink:
         specifier: 7.1.1
-        version: 7.1.1(@types/react@19.2.18)(react@19.2.8)
+        version: 7.1.1(patch_hash=792048f58743f8b39cbeae935f42fdb59bf9cbcc3409f2c85e0c68ba9293643d)(@types/react@19.2.18)(react@19.2.8)
+      is-in-ci:
+        specifier: 2.0.0
+        version: 2.0.0
       js-yaml:
         specifier: 4.2.0
         version: 4.2.0
@@ -484,6 +521,9 @@ importers:
       node-pty:
         specifier: 1.1.0
         version: 1.1.0(patch_hash=7a0c04f1f49d798a9ffe2f7f414c01064a44ca2489772d0c3e1235ab336755e6)
+      patch-console:
+        specifier: 2.0.0
+        version: 2.0.0
       picomatch:
         specifier: 4.0.4
         version: 4.0.4
@@ -493,27 +533,57 @@ importers:
       react-dom:
         specifier: 18.3.1
         version: 18.3.1(react@19.2.8)
+      react-reconciler:
+        specifier: 0.33.0
+        version: 0.33.0(react@19.2.8)
+      scheduler:
+        specifier: 0.27.0
+        version: 0.27.0
       sharp:
         specifier: 0.35.3
         version: 0.35.3(@types/node@22.20.0)
       shiki:
         specifier: 4.3.1
         version: 4.3.1
+      signal-exit:
+        specifier: 3.0.7
+        version: 3.0.7
+      slice-ansi:
+        specifier: 9.0.0
+        version: 9.0.0
+      stack-utils:
+        specifier: 2.0.6
+        version: 2.0.6
       string-width:
         specifier: 8.2.2
         version: 8.2.2
+      terminal-size:
+        specifier: 4.0.1
+        version: 4.0.1
       turndown:
         specifier: 7.2.4
         version: 7.2.4
+      type-fest:
+        specifier: 5.8.0
+        version: 5.8.0
       use-sync-external-store:
         specifier: 1.2.0
         version: 1.2.0(react@19.2.8)
+      widest-line:
+        specifier: 6.0.0
+        version: 6.0.0
+      wrap-ansi:
+        specifier: 10.0.0
+        version: 10.0.0
       ws:
         specifier: 8.21.0
         version: 8.21.0
       yaml:
         specifier: 2.9.0
         version: 2.9.0
+      yoga-layout:
+        specifier: 3.2.1
+        version: 3.2.1
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -8025,7 +8095,7 @@ importers:
         version: 15.0.0
       ink:
         specifier: 7.1.1
-        version: 7.1.1(@types/react@19.2.18)(react@19.2.8)
+        version: 7.1.1(patch_hash=792048f58743f8b39cbeae935f42fdb59bf9cbcc3409f2c85e0c68ba9293643d)(@types/react@19.2.18)(react@19.2.8)
       marked:
         specifier: ^16.1.1
         version: 16.4.2
@@ -8033,8 +8103,8 @@ importers:
         specifier: 19.2.8
         version: 19.2.8
       string-width:
-        specifier: ^7.2.0
-        version: 7.2.0
+        specifier: 8.2.2
+        version: 8.2.2
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -8126,6 +8196,12 @@ importers:
       '@types/react':
         specifier: ^19.2.18
         version: 19.2.18
+      '@xterm/headless':
+        specifier: 6.0.0
+        version: 6.0.0
+      node-pty:
+        specifier: 1.1.0
+        version: 1.1.0(patch_hash=7a0c04f1f49d798a9ffe2f7f414c01064a44ca2489772d0c3e1235ab336755e6)
 
   packages/typert/generator:
     dependencies:
@@ -11873,6 +11949,9 @@ packages:
   '@vueuse/shared@12.8.2':
     resolution: {integrity: sha512-dznP38YzxZoNloI0qpEfpkms8knDtaoQ6Y/sfS0L7Yki4zh40LFHEhur0odJC6xTHG5dxWVPiUWBXn+wCG2s5w==}
 
+  '@xterm/headless@6.0.0':
+    resolution: {integrity: sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==}
+
   '@yarnpkg/cli-dist@4.17.1':
     resolution: {integrity: sha512-2tiSQuJNl/L3QwTdrq6lKWDpkcnp9MGvCT/rIldHcbu3SWfnLdmehvt3eulX1hT7FFt1Gjfq3CesF+kvhFip6g==}
     engines: {node: '>=18.12.0'}
@@ -12427,9 +12506,6 @@ packages:
 
   emoji-regex-xs@1.0.0:
     resolution: {integrity: sha512-LRlerrMYoIDrT6jgpeZ2YYl/L8EulRTt5hQcYjy5AInh7HWXKimpqx68aknBFpGL2+/IcogTcaydJEgaTmOpDg==}
-
-  emoji-regex@10.6.0:
-    resolution: {integrity: sha512-toUI84YS5YmxW219erniWD0CIVOo46xGKColeNQRgOzDorgBi1v4D71/OFzgD9GO2UGKIv1C3Sp8DAn0+j5w7A==}
 
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
@@ -14092,10 +14168,6 @@ packages:
   string-width@5.1.2:
     resolution: {integrity: sha512-HnLOCR3vjcY8beoNLtcjZ5/nxn2afmME6lhrDrebokqMap+XbeW8n9TXpPDOqdGK5qcI3oT0GKTW6wC7EMiVqA==}
     engines: {node: '>=12'}
-
-  string-width@7.2.0:
-    resolution: {integrity: sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ==}
-    engines: {node: '>=18'}
 
   string-width@8.2.2:
     resolution: {integrity: sha512-GaPUh5gfdrYzqeVNZvUfT23vYYxXzKYidUcnMtJg/3rxRV63EFZy3k6xfKlmfeJD0176lnUV/Usr3XcwSvFzpg==}
@@ -17185,6 +17257,8 @@ snapshots:
     transitivePeerDependencies:
       - typescript
 
+  '@xterm/headless@6.0.0': {}
+
   '@yarnpkg/cli-dist@4.17.1': {}
 
   accepts@2.0.0:
@@ -17723,8 +17797,6 @@ snapshots:
   electron-to-chromium@1.5.393: {}
 
   emoji-regex-xs@1.0.0: {}
-
-  emoji-regex@10.6.0: {}
 
   emoji-regex@8.0.0: {}
 
@@ -18294,7 +18366,7 @@ snapshots:
 
   inherits@2.0.4: {}
 
-  ink@7.1.1(@types/react@19.2.18)(react@19.2.8):
+  ink@7.1.1(patch_hash=792048f58743f8b39cbeae935f42fdb59bf9cbcc3409f2c85e0c68ba9293643d)(@types/react@19.2.18)(react@19.2.8):
     dependencies:
       '@alcalzone/ansi-tokenize': 0.3.0
       ansi-escapes: 7.3.0
@@ -19826,12 +19898,6 @@ snapshots:
     dependencies:
       eastasianwidth: 0.2.0
       emoji-regex: 9.2.2
-      strip-ansi: 7.2.0
-
-  string-width@7.2.0:
-    dependencies:
-      emoji-regex: 10.6.0
-      get-east-asian-width: 1.6.0
       strip-ansi: 7.2.0
 
   string-width@8.2.2:
