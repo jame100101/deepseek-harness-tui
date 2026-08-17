@@ -1,0 +1,71 @@
+# The dsh-tui-app bundle patch: the terminal surface over dsh-base.
+# Like headless, it mounts no Host, HTTP server, Web runtime, or browser
+# plugin. Unlike web-app, it leaves the base's agent-plane rows enabled —
+# the TUI is single-session and composes its agent process-wide, which is
+# exactly the composition the base keeps those rows for.
+
+- id: system-prompt
+  config:
+    persona: >-
+      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
+
+# The shared module-reload HMR row stays off; the launcher's watch-only
+# fallback still keeps the user patch layers live until the run exits.
+- id: hmr
+  disabled: true
+
+# ── the terminal surface ────────────────────────────────────────────────
+
+- insert:
+    - id: tui
+      name: '@deepseek-ai/dsh-tui'
+
+    # Code Mode is a core execution capability, not a Web component (the
+    # headless and web-app bundles mount the same row). The `code` agent
+    # preset's tool-presentation row waits on this host-plane runtime; without
+    # it the preset cannot mount, and switching to it fails with
+    # "preset failed to mount" naming tool-presentation.
+    - id: code-runtime
+      name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+
+    # The host half of the self-modification toolset (cordisInspect +
+    # dynamicCordisRunner). The `cordis` agent preset's tool-cordis row waits
+    # on these two services; without them that preset cannot mount. The CLIENT
+    # half stays Web-only (it injects the Web runtime's modules/slots/remote),
+    # so the tui composition mounts only this host row — mirroring web-app.
+    - id: cordis-host-runner
+      name: '@deepseek-ai/dsh-cordis-host-runner'
+
+    # Durable per-message feedback sidecar (Web parity for 👍/👎): the base
+    # bundle already loads session-persistence; storage + storage-domain host
+    # the sidecar domain (the web-app rows, mirrored).
+    - id: storage
+      name: '@deepseek-ai/dsh-storage'
+
+    - id: storage-json
+      name: '@deepseek-ai/dsh-storage-json'
+      config:
+        root: !!js dshHomePath('storages')
+
+    - id: storage-domain
+      name: '@deepseek-ai/dsh-storage-domain'
+      config:
+        backend: json
+
+    - id: message-feedback
+      name: '@deepseek-ai/dsh-message-feedback'
+      config:
+        maxNoteBytes: 8192
+
+    # The preset roster: the four shipped presets under `config/agent-presets/`
+    # (code/cordis/minimal/standard) plus the writable `$DSH_HOME/.agent-presets`
+    # user root (dsh-agent-presets' own default). The SHIPPED system root is an
+    # assembly fact — `apps/cli`'s composeProfile resolves it beside this app's
+    # own config and patches it in as an overlay, exactly like the web-app
+    # bundle. Mounting the service does NOT change existing sessions: an agent
+    # joins a preset only when the TUI's preset switch (or a continued/resumed
+    # session) names one.
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: standard
