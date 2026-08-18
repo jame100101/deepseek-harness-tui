@@ -1,185 +1,302 @@
-# DeepSeek Harness TUI (`dsh-tui`)
+# DeepSeek Harness TUI（`dsh-tui`）
 
-[English](README.md) | 中文
-
-<p align="center">
-  <a href="#quick-start"><img alt="Node 22" src="https://img.shields.io/badge/NODE-22+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white"></a>
-  <a href="#architecture"><img alt="React 19" src="https://img.shields.io/badge/REACT-19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB"></a>
-  <a href="#architecture"><img alt="TypeScript" src="https://img.shields.io/badge/TYPESCRIPT-3178C6?style=for-the-badge&logo=typescript&logoColor=white"></a>
-  <a href="#architecture"><img alt="Ink 7" src="https://img.shields.io/badge/INK-7-3A3A3A?style=for-the-badge"></a>
-  <a href="#key-features"><img alt="Local TUI" src="https://img.shields.io/badge/TUI-REACT%20%7C%20INK-EC4899?style=for-the-badge"></a>
-</p>
-
-<p align="center"><strong>English</strong> · <a href="#简体中文">简体中文</a> · Local-first · Session persistence · Tool runtime</p>
-
-> 🚀 **Release Candidate `0.1.0-rc.10`** — clean-room installation verified on
-> Windows, macOS, and Linux. Not stable yet. See [Quick Start](#quick-start).
+[English](README.md) | 简体中文
 
 <p align="center">
-  <img src="https://camo.githubusercontent.com/130fe19ff42a0b7fcf48e12109046841d9164741bb8713634af0c1371946da1f/68747470733a2f2f72617763646e2e6769746861636b2e636f6d2f6a616d653130303130312f646565707365656b2d6861726e6573732d7475692f313038623531396133373135666433393035613832373236623535353364646237343235653064382f6173736574732f7475692d73657373696f6e2d636861742e706e67" alt="dsh-tui session screenshot" width="46%">
-  <img src="https://camo.githubusercontent.com/70b5b656de08ec7ea88a28d629c9f92d424457788796c360a85fa7d45db3ecef/68747470733a2f2f72617763646e2e6769746861636b2e636f6d2f6a616d653130303130312f646565707365656b2d6861726e6573732d7475692f313038623531396133373135666433393035613832373236623535353364646237343235653064382f6173736574732f7475692d73657373696f6e2d70616e656c2e706e67" alt="dsh-tui full-screen transcript screenshot" width="46%">
+  <a href="#快速开始"><img alt="Node 22.19+ / 24+" src="https://img.shields.io/badge/NODE-22.19%2B%20%2F%2024%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white"></a>
+  <a href="#架构"><img alt="React 19" src="https://img.shields.io/badge/REACT-19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB"></a>
+  <a href="#架构"><img alt="TypeScript" src="https://img.shields.io/badge/TYPESCRIPT-3178C6?style=for-the-badge&logo=typescript&logoColor=white"></a>
+  <a href="#架构"><img alt="Ink 7" src="https://img.shields.io/badge/INK-7-3A3A3A?style=for-the-badge"></a>
+  <a href="#核心功能"><img alt="Local TUI" src="https://img.shields.io/badge/TUI-REACT%20%7C%20INK-EC4899?style=for-the-badge"></a>
+</p>
+
+<p align="center">本地优先 · 会话持久化 · 工具运行时</p>
+
+> 🚀 **Release Candidate `0.1.0-rc.10`** — 当前为预发布版本，尚未稳定。请从[快速开始](#quick-start)开始。
+
+<p align="center">
+  <img src="assets/tui-session-chat.png" alt="dsh-tui 会话截图" width="46%">
+  <img src="assets/tui-session-panel.png" alt="dsh-tui 全屏会话记录截图" width="46%">
 </p>
 <p align="center">
-  <img src="https://camo.githubusercontent.com/a36faafccaf43884fc9163a49a640cd435fb575d7c7f3a9a6ce3e871c3ba3152/68747470733a2f2f72617763646e2e6769746861636b2e636f6d2f6a616d653130303130312f646565707365656b2d6861726e6573732d7475692f626135303131393463393338303834316637316236653136323237383063636664613664336136372f6173736574732f7475692d73657373696f6e2d7562756e74752d737461727475702e706e67" alt="dsh-tui Ubuntu startup screenshot" width="46%">
-  <img src="https://camo.githubusercontent.com/10238e7e1d0f6421c73fb51e177670a55eb90e03fa0b6779e7e3586d7aa24a65/68747470733a2f2f72617763646e2e6769746861636b2e636f6d2f6a616d653130303130312f646565707365656b2d6861726e6573732d7475692f626135303131393463393338303834316637316236653136323237383063636664613664336136372f6173736574732f7475692d73657373696f6e2d7562756e74752d636861742e706e67" alt="dsh-tui Ubuntu chat screenshot" width="46%">
+  <img src="assets/tui-session-ubuntu-startup.png" alt="dsh-tui Ubuntu 启动截图" width="46%">
+  <img src="assets/tui-session-ubuntu-chat.png" alt="dsh-tui Ubuntu 会话截图" width="46%">
 </p>
 
-`dsh-tui` is a **local terminal assistant** for the DeepSeek Harness agent
-runtime — a Claude Code-style CLI with a React 19 + Ink 7 interface: thinking
-shimmer, streaming replies, tool cards, permissions, slash-command palette,
-persistent sessions, and settings panels.
+`dsh-tui` 是 DeepSeek Harness agent runtime 的**本地终端助手**，提供类似 Claude Code 的 CLI 和 React 19 + Ink 7 界面，包含思考动画、流式回复、工具卡片、权限、斜杠命令面板、持久会话和设置面板。
 
-## Quick Start
+<a id="quick-start"></a>
 
-### 1. Install the environment
+## 快速开始
 
-`dsh-tui` needs **Node.js `^22.19 || >=24`** — npm is bundled with Node, so
-installing Node installs npm too.
+### 1. 安装 Node.js 与 npm
 
-Check what is already there:
+本包遵循仓库声明的准确 engine 范围：`^22.19.0 || >=24.0.0`。也就是说，支持 Node.js 22.19.0 及其后的 Node 22 版本、Node.js 24 及更高版本，以及后续满足 `>=24` 的版本。Node 23 和早于 22.19.0 的 Node 22 版本不在声明范围内。
+
+npm 通常会随官方 Node.js 安装包一起安装，不需要单独下载。先检查当前环境：
 
 ```sh
-node --version   # must be ^22.19 || >=24
+node --version
 npm --version
 ```
 
-If Node is missing or too old, install it one of these ways:
+如果命令缺失或版本不在支持范围内，请按平台选择下面一种安装方式。
 
-- **Windows** — the official installer from
-  [nodejs.org](https://nodejs.org/en/download), or
-  `winget install OpenJS.NodeJS.LTS`
-- **macOS** — `brew install node`, or the nodejs.org installer
-- **Ubuntu / Debian** — use
-  [NodeSource](https://github.com/nodesource/distributions) (Node 24 LTS);
-  the distro `apt` package is usually too old
-- **Any platform** — [nvm](https://github.com/nvm-sh/nvm) (nvm-windows on
-  Windows) to switch Node versions freely
+#### Windows
 
-Re-run the version checks above, then continue.
+**方式 A：官方安装包**
 
-### 2. Install dsh-tui
+前往 [nodejs.org](https://nodejs.org/en/download) 下载当前 Node.js 安装包，选择满足 Node 22.19+ 或 Node 24+ 的版本。官方安装包会同时安装 npm。
+
+**方式 B：winget**
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+```
+
+安装后关闭并重新打开 PowerShell 或 Windows Terminal，再检查：
+
+```powershell
+node --version
+npm --version
+where.exe node
+where.exe npm
+```
+
+#### macOS
+
+已安装 [Homebrew](https://brew.sh/) 时执行：
+
+```sh
+brew install node
+node --version
+npm --version
+```
+
+如果机器已有旧版 Node.js，请升级到满足 `^22.19.0 || >=24.0.0` 的版本。需要在多个项目间切换版本时，可以使用 [nvm](https://github.com/nvm-sh/nvm)：
+
+```sh
+nvm install 24
+nvm alias default 24
+nvm use 24
+node --version
+npm --version
+```
+
+#### Ubuntu / Debian
+
+发行版默认 apt 仓库中的 Node.js 可能较旧。即使 `node` 命令存在，也要先检查版本，再安装 `dsh-tui`。
+
+下面是一组可直接复制的 NodeSource Node 24 安装命令：
+
+```sh
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+node --version
+npm --version
+which node
+which npm
+```
+
+对于开发机，推荐使用 nvm 的用户级安装方式，避免系统级 npm 权限问题：
+
+```sh
+sudo apt-get update
+sudo apt-get install -y curl
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.6/install.sh | bash
+source ~/.bashrc
+nvm install 24
+nvm alias default 24
+nvm use 24
+
+node --version
+npm --version
+which node
+which npm
+```
+
+如果登录 shell 是 zsh，请将 `source ~/.bashrc` 换成 `source ~/.zshrc`。如果系统已有旧版 apt 或系统 Node.js，请先升级或选择满足要求的版本。
+
+### 2. 安装 dsh-tui
+
+当前发布的 RC 版本是 `0.1.0-rc.10`。请安装 RC 通道，不要安装稳定的 `latest` 通道：
 
 ```sh
 npm install -g @jame100101/dsh-tui@rc
-```
-
-To pin this release candidate exactly:
-
-```sh
-npm install -g @jame100101/dsh-tui@0.1.0-rc.10
-```
-
-The package ships its runtime inside the tarball — nothing else to install.
-
-### 3. Verify
-
-```sh
 dsh-tui --version
-# 0.1.0-rc.10
 ```
 
-### 4. Start in your project
+在当前 RC 仍是最新版本时，版本命令应输出 `0.1.0-rc.10`。 包内已经包含 bundled runtime，终端用户不需要另行安装 workspace。
+
+### 3. 启动项目
+
+在想要作为 workspace 的目录中运行 `dsh-tui`。当前目录默认就是 workspace：
 
 ```sh
 cd your-project
 dsh-tui
 ```
 
-The current working directory is the default workspace for the agent.
-
-### 5. Configure the DeepSeek API key
-
-The easiest way is inside the TUI itself:
-
-1. Type `/settings`, then `Tab` to the **Models** page.
-2. Under **API credentials**, select the DeepSeek credential and press
-   **Enter**.
-3. Type your key (the input is **masked, never echoed**) and confirm with
-   **Enter**.
-
-Credentials are stored locally in `$DSH_HOME/.credentials.yaml`
-(`~/.dsh/.credentials.yaml` by default), are never displayed, and take effect
-for the next request — no restart needed. (A credential shadowed by an
-environment variable is shown as read-only in this page.)
-
-**Alternative — environment variable:**
+启动前设置 DeepSeek API key。Bash、zsh 和 PowerShell 示例：
 
 ```sh
-# Windows PowerShell
-$env:DEEPSEEK_API_KEY="your-api-key"
-# Windows, persist for the current user (new terminals only):
-setx DEEPSEEK_API_KEY "your-api-key"
-# macOS / Linux
-export DEEPSEEK_API_KEY="your-api-key"
+export DEEPSEEK_API_KEY=your_api_key
+dsh-tui
 ```
 
-### 6. Start coding
+```powershell
+$env:DEEPSEEK_API_KEY = "your_api_key"
+dsh-tui
+```
 
-Type a task in the composer and press **Enter**. Type `/help` for the full
-slash-command catalog.
+请尽量不要把 API key 写入源代码或 shell 历史。
 
-## Common Commands
+也可以在 TUI 内输入凭据：
 
-| Command | What it does |
+1. 输入 `/settings`，按 `Tab` 切到 **Models** 页面。
+2. 在 **API credentials** 中选择 DeepSeek 凭据并按 **Enter**。
+3. 输入 key（输入框会遮蔽内容且不回显），按 **Enter** 确认。
+
+凭据保存在 `$DSH_HOME/.credentials.yaml`（默认：`~/.dsh/.credentials.yaml`），不会显示；下一次请求即可生效，无需重启。被环境变量覆盖的凭据会在设置页面显示为只读。
+
+## 常用命令
+
+| 命令 | 作用 |
 | --- | --- |
-| `dsh-tui` | interactive TUI, new session in the current directory |
-| `dsh-tui "<task>"` | open the TUI and submit the task immediately |
-| `dsh-tui -c` / `--continue` | resume the newest session created in this directory |
-| `dsh-tui -r` | open the interactive session picker |
-| `dsh-tui -r <session-id>` | resume a session by id, id prefix, or title |
-| `dsh-tui -c --fork-session` | fork the resumed session at its last completed turn |
-| `dsh-tui -p "<task>"` | one-shot: print the assistant result to stdout, no TUI |
-| `dsh-tui -c -p "<task>"` | resume, then run one task non-interactively |
-| `dsh-tui --help` | show the help |
+| `dsh-tui` | 在当前目录启动 TUI。 |
+| `dsh-tui "<task>"` | 启动 TUI 后立即提交任务。 |
+| `dsh-tui -c` / `--continue` | 恢复当前目录最近的会话。 |
+| `dsh-tui -r` | 打开交互式会话选择器。 |
+| `dsh-tui -r <session-id>` | 按 ID、ID 前缀或标题恢复会话。 |
+| `dsh-tui -c --fork-session` | 从恢复会话最后一个已完成轮次创建分叉。 |
+| `dsh-tui -p "<task>"` | 不打开 TUI，将单个任务结果输出到 stdout。 |
+| `dsh-tui -c -p "<task>"` | 恢复会话后以非交互方式执行一个任务。 |
+| `dsh-tui --version` | 输出已安装的包版本。 |
+| `dsh-tui --help` | 显示 CLI 选项。 |
+| `/help` | 在 TUI 中显示交互式命令。 |
+| `/new` | 创建新会话。 |
+| `/resume` | 浏览并恢复已保存的会话。 |
+| `/settings` | 打开设置。 |
+| `/effort` | 选择思考强度。 |
+| 连按两次 `Ctrl+C` | 退出 TUI。 |
 
-Exit codes: `0` success · `1` runtime failure · `2` usage error · `130` SIGINT.
-`--print` writes only the assistant result to stdout; diagnostics go to stderr.
+退出码：`0` 表示成功，`1` 表示 runtime 失败，`2` 表示用法错误，`130` 表示 SIGINT。`--print` 只将 agent 结果写入 stdout，诊断信息写入 stderr。
 
-## Key Features
+## 核心功能
 
-- **React + Ink terminal UI** with streaming replies, Markdown rendering, and
-  a thinking shimmer you can expand or collapse.
-- **Current-directory workspace** — sessions remember the directory they were
-  created in; `-c` resumes only sessions from the current directory.
-- **Persistent sessions** — full history replay on resume, live session
-  picker, renaming, and `/fork` (the original session is never overwritten).
-- **Print mode** — `-p` is clean, scriptable, CI-friendly output.
-- **Settings** — five pages: General, Models (catalog + **API credentials**),
-  Plugins, Inventory, and agent Presets.
-- **Tools & permissions** — bash/pwsh/file/web tools behind a sandbox-mode
-  bar (`Shift+Tab` rotates read-only → workspace-write → danger-full-access),
-  with approval and ask-user takeovers.
-- **Slash-command palette** — `/` opens the alphabetical command palette;
-  `Tab` completes, `Esc` dismisses.
-- **Mouse & keyboard navigation** — wheel/pgup/pgdn scrolling, a right-edge
-  scrollbar with a back-to-bottom button, transcript selection mode, and
-  per-message 👍/👎 feedback.
-- **npm distribution** — a single self-contained global install.
+- **本地优先 TUI：** 直接运行在终端中，而不是托管网页中。
+- **流式 agent 交互：** 实时显示思考、回复、工具活动、权限和状态。
+- **持久会话：** 恢复历史对话、浏览记录、重命名会话，并在不覆盖原会话的情况下分叉。
+- **Print 模式：** `-p` 生成适合 shell 和 CI 的干净、可脚本化输出。
+- **斜杠命令面板：** 输入 `/` 搜索命令，`Tab` 补全，`Esc` 关闭。
+- **设置：** 提供 General、带 API credentials 的 Models、Plugins、Inventory 和 agent Presets 页面。
+- **工具与权限：** bash、PowerShell、文件和 Web 工具通过 sandbox-mode 栏运行，并支持审批和 ask-user 交互。
+- **响应式终端布局：** 处理 resize、alternate-screen 生命周期、鼠标滚轮、选择和滚动条交互。
+- **Unicode 显示：** composer 和会话记录支持 CJK、emoji 以及 ⚙ 等符号。
+- **持久 Shell 启动：** bundled Harness runtime 让持久 Shell 工具和终端读取器共用同一个 prompt sentinel，`pwd`、`ls` 等短命令不会因暗号不一致而等待 fallback 超时。
+- **npm 分发：** 单次全局安装即可包含 bundled runtime。
 
-## Maintenance
+## 常见故障
+
+### `node: command not found` 或 Windows 提示 `'node' is not recognized`
+
+安装 Node.js 后重新打开终端。如果问题仍在，请确认 Node.js 已安装且安装目录位于 `PATH`：
 
 ```sh
-npm install -g @jame100101/dsh-tui@rc   # upgrade to the newest RC
-npm uninstall -g @jame100101/dsh-tui    # uninstall
+which node
+which npm
 ```
 
-## Development
+Windows 使用：
 
-Normal users do not need this section.
+```powershell
+where.exe node
+where.exe npm
+```
+
+### `npm: command not found`
+
+npm 通常由 Node.js 安装包提供。请修复或重新安装 Node.js 及其 PATH 配置，不要单独下载 npm。
+
+### `dsh-tui: command not found`
+
+检查 npm 全局前缀和可执行文件位置：
 
 ```sh
+npm prefix -g
+which node
+which npm
+which dsh-tui
+```
+
+Windows 使用：
+
+```powershell
+npm prefix -g
+where.exe node
+where.exe npm
+where.exe dsh-tui
+```
+
+如果全局 bin 目录不在 PATH 中，请将 npm 报告的目录加入 PATH，或使用 nvm 等用户级 Node 版本管理器。
+
+### Node.js 版本过低
+
+运行 `node --version`，升级到声明范围 `^22.19.0 || >=24.0.0`。Node 22.0–22.18 和 Node 23 不属于本包支持的 engine 范围。
+
+### Linux 或 macOS 全局安装出现 EACCES
+
+优先使用 nvm 或其他用户级 Node.js 安装，让 npm 全局前缀由当前用户写入。不要把 `sudo npm install -g ...` 作为默认修复方式，否则可能在 npm 前缀中产生混合所有权。
+
+## Release Candidate 状态
+
+`dsh-tui` 当前是 **Release Candidate**，不是稳定版。使用：
+
+```sh
+npm install -g @jame100101/dsh-tui@rc
+```
+
+`rc` dist-tag 与 `latest` 有意分离。报告问题前，请用 `dsh-tui --version` 检查已安装版本。
+
+## 维护
+
+会话数据和本地配置保存在用户的 DSH 数据目录中。如果会话对你很重要，请备份该目录；删除旧会话时请使用 TUI 或支持的会话工具，不要删除无关项目文件。
+
+上面提到的持久 Shell prompt 对齐是 bundled runtime 的集成细节。本 README 只向用户说明该行为，不修改核心 Harness README 或核心 Harness 协议。
+
+升级或卸载全局包：
+
+```sh
+npm install -g @jame100101/dsh-tui@rc
+npm uninstall -g @jame100101/dsh-tui
+```
+
+## 开发
+
+克隆仓库并安装 workspace 依赖：
+
+```sh
+git clone https://github.com/jame100101/deepseek-harness-tui.git
+cd deepseek-harness-tui
 pnpm install
-pnpm dsh --profile tui        # run from source (tsx)
-pnpm run build                # build once, after install or source changes
-pnpm exec dsh --profile tui   # run the built fast path
+pnpm run build
+pnpm run test
 ```
 
-This repository is a separate full copy of the `deepseek-harness` workspace
-plus the TUI plugin (`packages/tui/tui`, the in-process plugin
-`@deepseek-ai/dsh-tui`) and the launcher entry (`apps/tui-cli`). The original
-repository is never modified.
+主要 TUI 源码位于 `packages/tui/tui`，CLI 组装位于 `apps/tui-cli`。在本地环境已配置好时，可使用 `pnpm dsh --profile tui` 进行源码 smoke run。
 
-## Architecture
+文档修改应同时更新 `README.md` 和 `README.zh.md`。产品代码、runtime 行为、package 版本、npm dist-tags、release 和 tag 与本 README-only 指南分开管理。
+
+## 架构
+
+- **React 19 + Ink 7：** 负责终端渲染和输入处理。
+- **TypeScript：** 提供类型化的应用和插件代码。
+- **DeepSeek Harness runtime：** 提供会话、工具、权限、持久化和 agent loop 等基于插件的服务。
+- **持久终端工具：** Shell 与文件系统操作通过 Harness runtime 执行。
+- **会话存储：** 本地持久化支持恢复和历史浏览。
 
 ```text
 dsh-tui (CLI wrapper, apps/tui-cli)
@@ -189,61 +306,8 @@ dsh-tui (CLI wrapper, apps/tui-cli)
   → event-sourced session log → live transcript rows
 ```
 
-The wrapper only translates launch flags and spawns the bundled runtime. The
-TUI plugin folds the append-only session log into transcript rows (user,
-assistant, thinking, tool cards, retries, status) and drives either the Ink
-full-screen renderer (TTY) or a line-driven fallback (pipes/CI).
+wrapper 负责转换启动参数并启动 bundled runtime。TUI 插件将 append-only session log 折叠为用户、agent、思考、工具卡片、重试和状态等记录；TTY 使用 Ink 全屏渲染器，pipe 和 CI 使用逐行 fallback。
 
-For a feature-by-feature comparison with the Web frontend, see
-**[TUI-WEB-COMPARISON.md](TUI-WEB-COMPARISON.md)**.
+如需逐项比较 Web 前端，请参阅 **[TUI-WEB-COMPARISON.md](TUI-WEB-COMPARISON.md)**。
 
-## 简体中文
-
-### 项目状态
-
-已作为 **Release Candidate** 发布：`@jame100101/dsh-tui@0.1.0-rc.10`
-（dist-tag：`rc`）。Windows / macOS / Linux 干净环境安装已验证，尚未 stable。
-
-### 快速开始
-
-**环境准备**：需要 Node.js `^22.19 || >=24`（npm 随 Node 自带）。先执行
-`node --version` 和 `npm --version` 检查；没有或版本太旧时：Windows 用
-[nodejs.org](https://nodejs.org/en/download) 安装包或
-`winget install OpenJS.NodeJS.LTS`，macOS 用 `brew install node`，
-Ubuntu/Debian 用 NodeSource（系统 apt 的 nodejs 通常太旧），任意平台可用
-nvm。
-
-```sh
-npm install -g @jame100101/dsh-tui@rc      # 安装（固定版本：@0.1.0-rc.10）
-dsh-tui --version                          # 验证，输出 0.1.0-rc.10
-cd 你的项目
-dsh-tui                                    # 启动；当前目录即默认 workspace
-```
-
-**配置 API Key（推荐在 TUI 内完成）**：输入 `/settings`，`Tab` 切到
-**Models** 页，在 **API credentials** 中选中 DeepSeek 凭据按 **Enter**，
-输入 Key（输入**不回显**）再按 **Enter** 确认。凭据保存在
-`$DSH_HOME/.credentials.yaml`（默认 `~/.dsh/.credentials.yaml`），
-永不显示，下次请求即生效，无需重启。环境变量方式（可选）：
-`$env:DEEPSEEK_API_KEY="你的-key"`（Windows PowerShell）或
-`export DEEPSEEK_API_KEY="你的-key"`（macOS / Linux）。
-
-**常用命令**
-
-| 命令 | 作用 |
-| --- | --- |
-| `dsh-tui "<任务>"` | 启动后立即提交任务 |
-| `dsh-tui -c` | 恢复当前目录最近的会话 |
-| `dsh-tui -r` / `-r <id>` | 会话选择面板 / 直接恢复指定会话 |
-| `dsh-tui -c --fork-session` | 从已有会话分叉（不覆盖原会话） |
-| `dsh-tui -p "<任务>"` | 非交互：stdout 输出结果，适合脚本/CI |
-| `dsh-tui --help` | 帮助 |
-
-### 源码开发
-
-```sh
-pnpm install
-pnpm dsh --profile tui        # 源码启动（tsx）
-pnpm run build
-pnpm exec dsh --profile tui   # 构建产物启动
-```
+参阅 [docs/architecture.md](docs/architecture.md) 了解仓库架构，参阅 [packages/README.md](packages/README.md) 了解包分组。

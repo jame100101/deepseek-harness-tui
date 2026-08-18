@@ -1,185 +1,300 @@
 # DeepSeek Harness TUI (`dsh-tui`)
 
-English | [中文](README.zh.md)
+English | [简体中文](README.zh.md)
 
 <p align="center">
-  <a href="#quick-start"><img alt="Node 22" src="https://img.shields.io/badge/NODE-22+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white"></a>
+  <a href="#quick-start"><img alt="Node 22.19+ / 24+" src="https://img.shields.io/badge/NODE-22.19%2B%20%2F%2024%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white"></a>
   <a href="#architecture"><img alt="React 19" src="https://img.shields.io/badge/REACT-19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB"></a>
   <a href="#architecture"><img alt="TypeScript" src="https://img.shields.io/badge/TYPESCRIPT-3178C6?style=for-the-badge&logo=typescript&logoColor=white"></a>
   <a href="#architecture"><img alt="Ink 7" src="https://img.shields.io/badge/INK-7-3A3A3A?style=for-the-badge"></a>
   <a href="#key-features"><img alt="Local TUI" src="https://img.shields.io/badge/TUI-REACT%20%7C%20INK-EC4899?style=for-the-badge"></a>
 </p>
 
-<p align="center"><strong>English</strong> · <a href="#简体中文">简体中文</a> · Local-first · Session persistence · Tool runtime</p>
+<p align="center">Local-first · Session persistence · Tool runtime</p>
 
-> 🚀 **Release Candidate `0.1.0-rc.10`** — clean-room installation verified on
-> Windows, macOS, and Linux. Not stable yet. See [Quick Start](#quick-start).
+> 🚀 **Release Candidate `0.1.0-rc.10`** — this is a pre-release and is not stable yet. See [Quick Start](#quick-start).
 
 <p align="center">
-  <img src="https://camo.githubusercontent.com/130fe19ff42a0b7fcf48e12109046841d9164741bb8713634af0c1371946da1f/68747470733a2f2f72617763646e2e6769746861636b2e636f6d2f6a616d653130303130312f646565707365656b2d6861726e6573732d7475692f313038623531396133373135666433393035613832373236623535353364646237343235653064382f6173736574732f7475692d73657373696f6e2d636861742e706e67" alt="dsh-tui session screenshot" width="46%">
-  <img src="https://camo.githubusercontent.com/70b5b656de08ec7ea88a28d629c9f92d424457788796c360a85fa7d45db3ecef/68747470733a2f2f72617763646e2e6769746861636b2e636f6d2f6a616d653130303130312f646565707365656b2d6861726e6573732d7475692f313038623531396133373135666433393035613832373236623535353364646237343235653064382f6173736574732f7475692d73657373696f6e2d70616e656c2e706e67" alt="dsh-tui full-screen transcript screenshot" width="46%">
+  <img src="assets/tui-session-chat.png" alt="dsh-tui session screenshot" width="46%">
+  <img src="assets/tui-session-panel.png" alt="dsh-tui full-screen transcript screenshot" width="46%">
 </p>
 <p align="center">
-  <img src="https://camo.githubusercontent.com/a36faafccaf43884fc9163a49a640cd435fb575d7c7f3a9a6ce3e871c3ba3152/68747470733a2f2f72617763646e2e6769746861636b2e636f6d2f6a616d653130303130312f646565707365656b2d6861726e6573732d7475692f626135303131393463393338303834316637316236653136323237383063636664613664336136372f6173736574732f7475692d73657373696f6e2d7562756e74752d737461727475702e706e67" alt="dsh-tui Ubuntu startup screenshot" width="46%">
-  <img src="https://camo.githubusercontent.com/10238e7e1d0f6421c73fb51e177670a55eb90e03fa0b6779e7e3586d7aa24a65/68747470733a2f2f72617763646e2e6769746861636b2e636f6d2f6a616d653130303130312f646565707365656b2d6861726e6573732d7475692f626135303131393463393338303834316637316236653136323237383063636664613664336136372f6173736574732f7475692d73657373696f6e2d7562756e74752d636861742e706e67" alt="dsh-tui Ubuntu chat screenshot" width="46%">
+  <img src="assets/tui-session-ubuntu-startup.png" alt="dsh-tui Ubuntu startup screenshot" width="46%">
+  <img src="assets/tui-session-ubuntu-chat.png" alt="dsh-tui Ubuntu chat screenshot" width="46%">
 </p>
 
-`dsh-tui` is a **local terminal assistant** for the DeepSeek Harness agent
-runtime — a Claude Code-style CLI with a React 19 + Ink 7 interface: thinking
-shimmer, streaming replies, tool cards, permissions, slash-command palette,
-persistent sessions, and settings panels.
+`dsh-tui` is a **local terminal assistant** for the DeepSeek Harness agent runtime — a Claude Code-style CLI with a React 19 + Ink 7 interface: thinking shimmer, streaming replies, tool cards, permissions, slash-command palette, persistent sessions, and settings panels.
 
 ## Quick Start
 
-### 1. Install the environment
+### 1. Install Node.js and npm
 
-`dsh-tui` needs **Node.js `^22.19 || >=24`** — npm is bundled with Node, so
-installing Node installs npm too.
+The package requires the repository's exact engine range: `^22.19.0 || >=24.0.0`. This means Node.js 22.19.0 or newer within Node 22, Node.js 24 or newer, and later releases that satisfy `>=24`. Node 23 and early Node 22 releases are outside the declared range.
 
-Check what is already there:
+npm is normally installed together with the official Node.js distribution; it does not need a separate download. First check your current environment:
 
 ```sh
-node --version   # must be ^22.19 || >=24
+node --version
 npm --version
 ```
 
-If Node is missing or too old, install it one of these ways:
+Use one of these platform-specific installation paths if either command is missing or the version is outside the supported range.
 
-- **Windows** — the official installer from
-  [nodejs.org](https://nodejs.org/en/download), or
-  `winget install OpenJS.NodeJS.LTS`
-- **macOS** — `brew install node`, or the nodejs.org installer
-- **Ubuntu / Debian** — use
-  [NodeSource](https://github.com/nodesource/distributions) (Node 24 LTS);
-  the distro `apt` package is usually too old
-- **Any platform** — [nvm](https://github.com/nvm-sh/nvm) (nvm-windows on
-  Windows) to switch Node versions freely
+#### Windows
 
-Re-run the version checks above, then continue.
+**Option A — official installer**
+
+Download a current Node.js installer from [nodejs.org](https://nodejs.org/en/download) and choose a release that satisfies Node 22.19+ or Node 24+. The official installer includes npm.
+
+**Option B — winget**
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+```
+
+Close and reopen PowerShell or Windows Terminal after installation, then verify:
+
+```powershell
+node --version
+npm --version
+where.exe node
+where.exe npm
+```
+
+#### macOS
+
+With [Homebrew](https://brew.sh/) installed:
+
+```sh
+brew install node
+node --version
+npm --version
+```
+
+If an older Node.js is already installed, upgrade it to a version in `^22.19.0 || >=24.0.0`. Developers who switch between projects can use [nvm](https://github.com/nvm-sh/nvm):
+
+```sh
+nvm install 24
+nvm alias default 24
+nvm use 24
+node --version
+npm --version
+```
+
+#### Ubuntu / Debian
+
+The distribution's default apt repository may provide an older Node.js. Seeing a working `node` command is not enough; check the version before installing `dsh-tui`.
+
+One copyable NodeSource setup for Node 24 is:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+node --version
+npm --version
+which node
+which npm
+```
+
+For development machines, nvm is a user-level alternative that avoids system-wide npm permissions:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y curl
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.6/install.sh | bash
+source ~/.bashrc
+nvm install 24
+nvm alias default 24
+nvm use 24
+
+node --version
+npm --version
+which node
+which npm
+```
+
+Use `source ~/.zshrc` instead when the login shell is zsh. If the host already has an older apt or system Node.js, upgrade or select a supported version before continuing.
 
 ### 2. Install dsh-tui
 
+The current published RC is `0.1.0-rc.10`. Install the RC channel rather than the stable `latest` channel:
+
 ```sh
 npm install -g @jame100101/dsh-tui@rc
-```
-
-To pin this release candidate exactly:
-
-```sh
-npm install -g @jame100101/dsh-tui@0.1.0-rc.10
-```
-
-The package ships its runtime inside the tarball — nothing else to install.
-
-### 3. Verify
-
-```sh
 dsh-tui --version
-# 0.1.0-rc.10
 ```
 
-### 4. Start in your project
+The version command should report `0.1.0-rc.10` while this RC is current. The package ships its bundled runtime inside the tarball, so a separate workspace install is not required for end users.
+
+### 3. Start a project
+
+Run `dsh-tui` from the directory you want to use as the workspace. The current directory is the default workspace:
 
 ```sh
 cd your-project
 dsh-tui
 ```
 
-The current working directory is the default workspace for the agent.
-
-### 5. Configure the DeepSeek API key
-
-The easiest way is inside the TUI itself:
-
-1. Type `/settings`, then `Tab` to the **Models** page.
-2. Under **API credentials**, select the DeepSeek credential and press
-   **Enter**.
-3. Type your key (the input is **masked, never echoed**) and confirm with
-   **Enter**.
-
-Credentials are stored locally in `$DSH_HOME/.credentials.yaml`
-(`~/.dsh/.credentials.yaml` by default), are never displayed, and take effect
-for the next request — no restart needed. (A credential shadowed by an
-environment variable is shown as read-only in this page.)
-
-**Alternative — environment variable:**
+Set your DeepSeek API key before starting. Bash, zsh, and PowerShell examples:
 
 ```sh
-# Windows PowerShell
-$env:DEEPSEEK_API_KEY="your-api-key"
-# Windows, persist for the current user (new terminals only):
-setx DEEPSEEK_API_KEY "your-api-key"
-# macOS / Linux
-export DEEPSEEK_API_KEY="your-api-key"
+export DEEPSEEK_API_KEY=your_api_key
+dsh-tui
 ```
 
-### 6. Start coding
+```powershell
+$env:DEEPSEEK_API_KEY = "your_api_key"
+dsh-tui
+```
 
-Type a task in the composer and press **Enter**. Type `/help` for the full
-slash-command catalog.
+Keep API keys out of source files and shell history where practical.
+
+You can also enter a credential inside the TUI:
+
+1. Type `/settings`, then press `Tab` to open the **Models** page.
+2. Under **API credentials**, select the DeepSeek credential and press **Enter**.
+3. Type the key (the field is masked and never echoed) and press **Enter** to confirm.
+
+Credentials are stored locally in `$DSH_HOME/.credentials.yaml` (default: `~/.dsh/.credentials.yaml`), are never displayed, and take effect for the next request without a restart. A credential shadowed by an environment variable is read-only in the settings page.
 
 ## Common Commands
 
-| Command | What it does |
+| Command | Purpose |
 | --- | --- |
-| `dsh-tui` | interactive TUI, new session in the current directory |
-| `dsh-tui "<task>"` | open the TUI and submit the task immediately |
-| `dsh-tui -c` / `--continue` | resume the newest session created in this directory |
-| `dsh-tui -r` | open the interactive session picker |
-| `dsh-tui -r <session-id>` | resume a session by id, id prefix, or title |
-| `dsh-tui -c --fork-session` | fork the resumed session at its last completed turn |
-| `dsh-tui -p "<task>"` | one-shot: print the assistant result to stdout, no TUI |
-| `dsh-tui -c -p "<task>"` | resume, then run one task non-interactively |
-| `dsh-tui --help` | show the help |
+| `dsh-tui` | Start the TUI in the current directory. |
+| `dsh-tui "<task>"` | Start the TUI and submit a task immediately. |
+| `dsh-tui -c` / `--continue` | Resume the newest session from the current directory. |
+| `dsh-tui -r` | Open the interactive session picker. |
+| `dsh-tui -r <session-id>` | Resume a session by id, id prefix, or title. |
+| `dsh-tui -c --fork-session` | Fork a resumed session at its last completed turn. |
+| `dsh-tui -p "<task>"` | Print one task result to stdout without opening the TUI. |
+| `dsh-tui -c -p "<task>"` | Resume a session, then run one task non-interactively. |
+| `dsh-tui --version` | Print the installed package version. |
+| `dsh-tui --help` | Show CLI options. |
+| `/help` | Show interactive commands inside the TUI. |
+| `/new` | Create a new session. |
+| `/resume` | Browse and resume a saved session. |
+| `/settings` | Open settings. |
+| `/effort` | Select the thinking effort. |
+| `Ctrl+C` twice | Exit the TUI. |
 
-Exit codes: `0` success · `1` runtime failure · `2` usage error · `130` SIGINT.
-`--print` writes only the assistant result to stdout; diagnostics go to stderr.
+Exit codes: `0` means success, `1` a runtime failure, `2` a usage error, and `130` SIGINT. `--print` writes only the assistant result to stdout; diagnostics go to stderr.
 
 ## Key Features
 
-- **React + Ink terminal UI** with streaming replies, Markdown rendering, and
-  a thinking shimmer you can expand or collapse.
-- **Current-directory workspace** — sessions remember the directory they were
-  created in; `-c` resumes only sessions from the current directory.
-- **Persistent sessions** — full history replay on resume, live session
-  picker, renaming, and `/fork` (the original session is never overwritten).
-- **Print mode** — `-p` is clean, scriptable, CI-friendly output.
-- **Settings** — five pages: General, Models (catalog + **API credentials**),
-  Plugins, Inventory, and agent Presets.
-- **Tools & permissions** — bash/pwsh/file/web tools behind a sandbox-mode
-  bar (`Shift+Tab` rotates read-only → workspace-write → danger-full-access),
-  with approval and ask-user takeovers.
-- **Slash-command palette** — `/` opens the alphabetical command palette;
-  `Tab` completes, `Esc` dismisses.
-- **Mouse & keyboard navigation** — wheel/pgup/pgdn scrolling, a right-edge
-  scrollbar with a back-to-bottom button, transcript selection mode, and
-  per-message 👍/👎 feedback.
-- **npm distribution** — a single self-contained global install.
+- **Local-first TUI:** runs in your terminal instead of a hosted web page.
+- **Streaming agent interaction:** shows thinking, replies, tool activity, permissions, and status as they arrive.
+- **Persistent sessions:** resume prior conversations, browse history, rename sessions, and fork without overwriting the original.
+- **Print mode:** `-p` produces clean, scriptable output for shells and CI.
+- **Slash-command palette:** type `/` to search available commands; `Tab` completes and `Esc` dismisses.
+- **Settings:** General, Models with API credentials, Plugins, Inventory, and agent Presets pages.
+- **Tools and permissions:** bash, PowerShell, file, and web tools use a sandbox-mode bar with approval and ask-user interactions.
+- **Responsive terminal layout:** handles resize, alternate-screen lifecycle, mouse wheel, selection, and scrollbar interaction.
+- **Unicode-aware display:** supports CJK text, emoji, and symbols such as ⚙ in composer and transcript layout.
+- **Persistent shell startup:** the bundled Harness runtime uses one shared prompt sentinel between the persistent shell tool and its terminal reader, so short commands such as `pwd` and `ls` do not wait for a mismatched-prompt fallback timeout.
+- **npm distribution:** a single self-contained global install includes the bundled runtime.
+
+## Troubleshooting
+
+### `node: command not found` or Windows says `'node' is not recognized`
+
+Reopen the terminal after installing Node.js. If the problem remains, verify that Node.js is installed and that its installation directory is on `PATH`:
+
+```sh
+which node
+which npm
+```
+
+On Windows use:
+
+```powershell
+where.exe node
+where.exe npm
+```
+
+### `npm: command not found`
+
+npm is normally supplied by the Node.js installation. Repair or reinstall Node.js and its PATH entry instead of downloading npm separately.
+
+### `dsh-tui: command not found`
+
+Check the global npm prefix and the executable locations:
+
+```sh
+npm prefix -g
+which node
+which npm
+which dsh-tui
+```
+
+On Windows:
+
+```powershell
+npm prefix -g
+where.exe node
+where.exe npm
+where.exe dsh-tui
+```
+
+If the global bin directory is not on PATH, add the directory reported by your npm installation or use a user-level Node manager such as nvm.
+
+### Node.js version is too old
+
+Run `node --version` and upgrade to the declared range `^22.19.0 || >=24.0.0`. Node 22.0–22.18 and Node 23 are not part of this package's supported engine range.
+
+### Linux or macOS global install reports EACCES
+
+Prefer nvm or another user-level Node.js installation so npm's global prefix is writable by your account. Do not make `sudo npm install -g ...` the default fix; it can create mixed ownership in the npm prefix.
+
+## Release Candidate Status
+
+`dsh-tui` is currently a **Release Candidate**, not a stable release. Use:
+
+```sh
+npm install -g @jame100101/dsh-tui@rc
+```
+
+The `rc` dist-tag is intentionally separate from `latest`. Check the installed version with `dsh-tui --version` before reporting a problem.
 
 ## Maintenance
 
+Session data and local configuration are stored under the user's DSH data directory. Keep that directory backed up if sessions matter to you, and remove old sessions through the TUI or the supported session tools rather than deleting unrelated project files.
+
+The persistent-shell prompt alignment described above is a bundled runtime integration detail. This README documents it for users; it does not change the core Harness README or the core Harness protocol.
+
+Upgrade or uninstall the global package with:
+
 ```sh
-npm install -g @jame100101/dsh-tui@rc   # upgrade to the newest RC
-npm uninstall -g @jame100101/dsh-tui    # uninstall
+npm install -g @jame100101/dsh-tui@rc
+npm uninstall -g @jame100101/dsh-tui
 ```
 
 ## Development
 
-Normal users do not need this section.
+Clone the repository and install workspace dependencies:
 
 ```sh
+git clone https://github.com/jame100101/deepseek-harness-tui.git
+cd deepseek-harness-tui
 pnpm install
-pnpm dsh --profile tui        # run from source (tsx)
-pnpm run build                # build once, after install or source changes
-pnpm exec dsh --profile tui   # run the built fast path
+pnpm run build
+pnpm run test
 ```
 
-This repository is a separate full copy of the `deepseek-harness` workspace
-plus the TUI plugin (`packages/tui/tui`, the in-process plugin
-`@deepseek-ai/dsh-tui`) and the launcher entry (`apps/tui-cli`). The original
-repository is never modified.
+The main TUI source is under `packages/tui/tui`. The CLI assembly lives under `apps/tui-cli`. Use `pnpm dsh --profile tui` for a source checkout smoke run when the required local environment is configured.
+
+Documentation changes should update both `README.md` and `README.zh.md`. Product code, runtime behavior, package versions, npm dist-tags, releases, and tags are separate from this README-only guide.
 
 ## Architecture
+
+- **React 19 + Ink 7:** terminal rendering and input handling.
+- **TypeScript:** typed application and plugin code.
+- **DeepSeek Harness runtime:** plugin-based services for sessions, tools, permissions, persistence, and agent loops.
+- **Persistent terminal tools:** shell and filesystem operations run through the Harness runtime.
+- **Session storage:** local persistence supports resume and history browsing.
 
 ```text
 dsh-tui (CLI wrapper, apps/tui-cli)
@@ -189,61 +304,8 @@ dsh-tui (CLI wrapper, apps/tui-cli)
   → event-sourced session log → live transcript rows
 ```
 
-The wrapper only translates launch flags and spawns the bundled runtime. The
-TUI plugin folds the append-only session log into transcript rows (user,
-assistant, thinking, tool cards, retries, status) and drives either the Ink
-full-screen renderer (TTY) or a line-driven fallback (pipes/CI).
+The wrapper translates launch flags and starts the bundled runtime. The TUI plugin folds the append-only session log into transcript rows for users, assistant messages, thinking, tool cards, retries, and status, then chooses the Ink full-screen renderer for TTYs or a line-driven fallback for pipes and CI.
 
-For a feature-by-feature comparison with the Web frontend, see
-**[TUI-WEB-COMPARISON.md](TUI-WEB-COMPARISON.md)**.
+For a feature-by-feature comparison with the Web frontend, see **[TUI-WEB-COMPARISON.md](TUI-WEB-COMPARISON.md)**.
 
-## 简体中文
-
-### 项目状态
-
-已作为 **Release Candidate** 发布：`@jame100101/dsh-tui@0.1.0-rc.10`
-（dist-tag：`rc`）。Windows / macOS / Linux 干净环境安装已验证，尚未 stable。
-
-### 快速开始
-
-**环境准备**：需要 Node.js `^22.19 || >=24`（npm 随 Node 自带）。先执行
-`node --version` 和 `npm --version` 检查；没有或版本太旧时：Windows 用
-[nodejs.org](https://nodejs.org/en/download) 安装包或
-`winget install OpenJS.NodeJS.LTS`，macOS 用 `brew install node`，
-Ubuntu/Debian 用 NodeSource（系统 apt 的 nodejs 通常太旧），任意平台可用
-nvm。
-
-```sh
-npm install -g @jame100101/dsh-tui@rc      # 安装（固定版本：@0.1.0-rc.10）
-dsh-tui --version                          # 验证，输出 0.1.0-rc.10
-cd 你的项目
-dsh-tui                                    # 启动；当前目录即默认 workspace
-```
-
-**配置 API Key（推荐在 TUI 内完成）**：输入 `/settings`，`Tab` 切到
-**Models** 页，在 **API credentials** 中选中 DeepSeek 凭据按 **Enter**，
-输入 Key（输入**不回显**）再按 **Enter** 确认。凭据保存在
-`$DSH_HOME/.credentials.yaml`（默认 `~/.dsh/.credentials.yaml`），
-永不显示，下次请求即生效，无需重启。环境变量方式（可选）：
-`$env:DEEPSEEK_API_KEY="你的-key"`（Windows PowerShell）或
-`export DEEPSEEK_API_KEY="你的-key"`（macOS / Linux）。
-
-**常用命令**
-
-| 命令 | 作用 |
-| --- | --- |
-| `dsh-tui "<任务>"` | 启动后立即提交任务 |
-| `dsh-tui -c` | 恢复当前目录最近的会话 |
-| `dsh-tui -r` / `-r <id>` | 会话选择面板 / 直接恢复指定会话 |
-| `dsh-tui -c --fork-session` | 从已有会话分叉（不覆盖原会话） |
-| `dsh-tui -p "<任务>"` | 非交互：stdout 输出结果，适合脚本/CI |
-| `dsh-tui --help` | 帮助 |
-
-### 源码开发
-
-```sh
-pnpm install
-pnpm dsh --profile tui        # 源码启动（tsx）
-pnpm run build
-pnpm exec dsh --profile tui   # 构建产物启动
-```
+See [docs/architecture.md](docs/architecture.md) for the repository architecture and [packages/README.md](packages/README.md) for package groups.
